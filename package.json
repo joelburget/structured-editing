@@ -1,0 +1,27 @@
+{
+  "name": "hazel-frontend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "storybook": "start-storybook -p 9001"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@kadira/storybook": "^1.28.1",
+    "draft-js": "^0.7.0",
+    "gulp": "^3.9.1",
+    "immutable": "^3.8.1",
+    "react": "^15.1.0",
+    "react-autosuggest": "^3.7.4",
+    "react-dom": "^15.1.0"
+  },
+  "devDependencies": {
+    "@kadira/storybook": "^1.28.1",
+    "babel-preset-react": "^6.5.0",
+    "babel-preset-stage-0": "^6.5.0",
+    "purs-loader": "^1.0.0-rc.1"
+  }
+}
