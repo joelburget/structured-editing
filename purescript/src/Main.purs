@@ -27,25 +27,6 @@ data Path
   = PathOffset Int
   | PathCons PathStep Path
 
--- instance pathStepIsForeign :: IsForeign PathStep where
---   read obj = case read obj :: F String of
---     Right "left" -> Right StepLeft
---     Right "right" -> Right StepRight
---     _ -> Left (JSONError "found unexpected value in pathStepIsForeign")
---
--- instance pathIsForeign :: IsForeign Path where
---   read obj = case read obj :: F (Array Foreign) of
---     Right arr -> case uncons (reverse arr) of
---       Just { head: n, tail: steps } ->
---         let steps' = traverse read steps
---             n' = read n
---         in case Tuple steps' n' of
---               Tuple (Right steps'') (Right n'') ->
---                 Right (foldr PathCons n'' steps'')
---               _ -> Left (JSONError "XXX 1")
---       Nothing -> Left (JSONError "XXX 2")
---     Left err -> Left err
-
 
 data Syntax
   = SNumber Int
@@ -56,15 +37,6 @@ toObj :: Syntax -> Foreign
 toObj (SNumber i) = toForeign { tag: "number", value: i }
 toObj (Plus l r) = toForeign { tag: "plus", l: toObj l, r: toObj r }
 toObj (Hole name) = toForeign { tag: "hole", name: name }
-
--- instance syntaxIsForeign :: IsForeign Syntax where
---   read obj = do
---     tag <- readProp "tag" obj
---     case tag of
---       "number" -> SNumber <$> readProp "value" obj
---       "plus" -> Plus <$> readProp "l" obj <*> readProp "r" obj
---       "hole" -> Hole <$> readProp "name" obj
---       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
 data Action
   = Backspace
