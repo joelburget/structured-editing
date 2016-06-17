@@ -3,10 +3,10 @@ module Main where
 
 import Prelude (otherwise, (/), (>=), (+), (-), (*), (++), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq)
 
-import Data.Array (uncons, concat, reverse)
+import Data.Array (uncons, concat, reverse, snoc)
 import Data.Char as C
 import Data.Either
-import Data.Foldable (foldr)
+import Data.Foldable (foldr, foldl)
 import Data.Foreign (Foreign, F, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Function (mkFn3, Fn3)
@@ -99,8 +99,11 @@ data LightInline
 
 type InlineInfo = { anchor :: Maybe Int , focus :: Maybe Int }
 
+newtype BlockKey = BlockKey String
+newtype EntityKey = EntityKey String
+
 type RawDraftContentBlock =
-  { key :: Maybe String
+  { key :: Maybe BlockKey
     -- type :: 'unstyled'
   , text :: String
   , entityRanges :: Array EntityRange
@@ -141,26 +144,28 @@ blockFromContent inlines =
         , focusKey: Nothing
         , focusOffset: 0
         }
+
       accum :: BFromCState -> LightInline -> BFromCState
       accum state (InlinePlus str info) = accumText str (accumAnchorFocus info)
       accum state (InlineNumber str info) = accumText str (accumAnchorFocus info)
       accum state (InlineHole str info) = accumText str (accumAnchorFocus info)
 
+      -- For each LightInline, add its text to the current state
       accumText :: String -> BFromCState -> BFromCState
       accumText str state =
-        let tLen = length text
+        let tLen = length state.text
             sLen = length str
         in state
-             { currentOffset = state.currentOffset + length str
+             { currentOffset = state.currentOffset + sLen
              , text = state.text + str
              , entityRanges = snoc state.entityRanges
-               { offset: length text
-               , length: length str
+               { offset: tLen
+               , length: sLen
                , key: state.tag -- XXX
                }
              }
 
-      accumAnchorFocus :: Key -> InlineInfo -> BFromCState -> BFromCState
+      accumAnchorFocus :: BlockKey -> InlineInfo -> BFromCState -> BFromCState
       accumAnchorFocus key info state =
         let state' = case info.anchor of
               Just i -> info
@@ -177,7 +182,7 @@ blockFromContent inlines =
         in state''
 
       finalState = foldl accum initialState inlines
-  in { block: { key: key
+  in { block: { key: Nothing
               , text: finalState.text
               , entityRanges: finalState.entityRanges
               }
@@ -288,6 +293,13 @@ type ContentState =
   , selection :: RawSelection
   }
 
+rawSelectionToSelection :: RawSelection -> Selection
+rawSelectionToSelection rawSelection =
+  if rawSelection.anchorOffset == rawSelection.focusOffset
+  then AtomicSelection (makePath rawSelection.anchorOffset)
+  else SpanningSelection (makePath rawSelection.anchorOffset) (makePath rawSelection.focusOffset)
+    where makePath = undefined
+
 rawOperate :: Syntax
            -> RawSelection
            -> Action
@@ -302,19 +314,17 @@ rawOperate syntax rawSelection action =
       contentState = blockFromContent content
   in contentState
 
-rawSelectionToSelection :: RawSelection -> Selection
-
 -- TODO change this from "operate" to "rawOperate"
 rawOperateForeign :: Foreign -> Foreign -> Foreign -> Foreign
 rawOperateForeign contentState action =
-  let allRead = Tuple3 <$> read syntax <*> read path <*> read action
+  let allRead = Tuple3 <$> read syntax <*> read rawSelection <*> read action
       result :: Either String Syntax
       result = case allRead of
                  Left err -> Left (show err)
-                 Right (Tuple3 syntax' path' action') -> operate syntax' path' action'
+                 Right (Tuple3 syntax' path' action') -> rawOperate syntax' rawSelection' action'
   in case result of
        Left err -> toForeign err
        Right result' -> toObj (result' :: Syntax)
 
 operateJs :: Fn3 Foreign Foreign Foreign Foreign
-operateJs = mkFn3 operateForeign
+operateJs = mkFn3 rawOperateForeign
