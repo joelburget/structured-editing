@@ -33,11 +33,6 @@ data Syntax
   | Plus Syntax Syntax
   | Hole String
 
-toObj :: Syntax -> Foreign
-toObj (SNumber i) = toForeign { tag: "number", value: i }
-toObj (Plus l r) = toForeign { tag: "plus", l: toObj l, r: toObj r }
-toObj (Hole name) = toForeign { tag: "hole", name: name }
-
 data Action
   = Backspace
   | Typing Char
@@ -293,10 +288,17 @@ rawOperateForeign contentState action =
       result :: Either String Syntax
       result = case allRead of
                  Left err -> Left (show err)
-                 Right (Tuple3 syntax' path' action') -> rawOperate syntax' rawSelection' action'
+                 Right (Tuple3 syntax' path' action') ->
+                   rawOperate syntax' rawSelection' action'
+      toObj :: Syntax -> Foreign
+      toObj (SNumber i) = toForeign { tag: "number", value: i }
+      toObj (Plus l r) = toForeign { tag: "plus", l: toObj l, r: toObj r }
+      toObj (Hole name) = toForeign { tag: "hole", name: name }
+
   in case result of
        Left err -> toForeign err
        Right result' -> toObj (result' :: Syntax)
+
 
 operateJs :: Fn3 Foreign Foreign Foreign Foreign
 operateJs = mkFn3 rawOperateForeign
