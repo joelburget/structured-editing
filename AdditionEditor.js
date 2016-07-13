@@ -22,6 +22,7 @@ import {operateJs} from './purescript/output/Main/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
+// 1 + hole
 console.log(operateJs(
       {
         tag: 'plus',
@@ -34,8 +35,12 @@ console.log(operateJs(
           name: 'hole',
         },
       },
-      // TODO change to l/r ?
-      ['left', 1],
+      {
+        anchorOffset: 2,
+        anchorKey: '',
+        focusOffset: 2,
+        focusKey: '',
+      },
       {
         tag: 'typing',
         value: '0',

@@ -1,7 +1,7 @@
 module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> RawDraftContentBlock`
 
-import Prelude (otherwise, (/), (<), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq)
+import Prelude (otherwise, (/), (<), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show)
 
 import Control.Monad.State (State, modify, get, evalState)
 import Data.Array ((:), {-uncons, reverse,-} concat, snoc)
@@ -25,9 +25,18 @@ instance pathStepIsEq :: Eq PathStep where
   eq StepRight StepRight = true
   eq _ _ = false
 
+instance pathStepIsShow :: Show PathStep where
+  show StepLeft = "StepLeft"
+  show StepRight = "StepRight"
+
 data Path
   = PathOffset Int
   | PathCons PathStep Path
+
+
+instance pathIsShow :: Show Path where
+  show (PathOffset i) = "PathOffset " <> show i
+  show (PathCons s p) = "PathCons " <> show s <> " " <> show p
 
 
 data Action
@@ -336,24 +345,27 @@ rawSelectionToSelection rawSelection syntax =
           -- consumed
           makePath :: Syntax -> Int -> Either Path Int
           makePath (SNumber n) offset =
-            if offset < length (show n)
-            then Left (PathOffset offset)
-            else Right offset
+            let nlen = length (show n)
+            in if offset <= nlen
+               then Left (PathOffset offset)
+               else Right nlen
 
           -- pretty much identical
           makePath (Hole name) offset =
-            if offset < length name
-            then Left (PathOffset offset)
-            else Right offset
+            let namelen = length name
+            in if offset <= namelen
+               then Left (PathOffset offset)
+               else Right namelen
 
-          -- [left] + [right]
-          makePath (Plus left right) offset = case makePath left offset of
-            Left path -> Left path
+          -- ([left] + [right])
+          makePath (Plus left right) offset = case makePath left (offset - 1) of
+                                                   -- XXX what about StepRight
+            Left path -> Left (PathCons StepLeft path)
             Right consumed ->
-              let offset' = offset - consumed
+              let offset' = offset - consumed - 1
               in if offset' < 3
                  then Left (PathOffset offset')
-                 else ((consumed + 3) + _) <$> makePath right offset'
+                 else ((consumed + 4) + _) <$> makePath right offset'
 
 rawOperate :: Syntax
            -> RawSelection
