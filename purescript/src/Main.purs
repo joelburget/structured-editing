@@ -1,20 +1,21 @@
 module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> RawDraftContentBlock`
 
-import Prelude (otherwise, (/), (>=), (+), (-), (*), (++), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq)
+import Prelude (otherwise, (/), (<), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq)
 
-import Data.Array (uncons, concat, reverse, snoc)
-import Data.Char as C
-import Data.Either
-import Data.Foldable (foldr, foldl)
-import Data.Foreign (Foreign, F, ForeignError(JSONError), toForeign)
+import Control.Monad.State (State, modify, get)
+import Data.Array ({-uncons, reverse,-} concat, snoc)
+import Data.Either (Either(..))
+import Data.Foldable ({-foldr,-} foldl)
+import Data.Foreign (Foreign, {-F,-} ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
-import Data.Function (mkFn3, Fn3)
+import Data.Function.Uncurried (mkFn3, Fn3)
 import Data.Int as I
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length)
-import Data.Traversable (traverse)
+-- import Data.Traversable (traverse)
 import Data.Tuple (Tuple(Tuple))
+import Data.Map (Map)
 
 data PathStep = StepLeft | StepRight
 
@@ -49,20 +50,20 @@ isDigit :: Char -> Boolean
 isDigit x = x >= '0' && x <= '9'
 
 cToI :: Char -> Int
-cToI c = case I.fromString (C.toString c) of
+cToI c = case I.fromString (show c) of
   Just i -> i
   Nothing -> 0
 
 type EntityRange =
   { offset :: Int
   , length :: Int
-  , key :: String
+  , key :: Int
   }
 
 data LightInline
-  = InlinePlus String InlineInfo
-  | InlineNumber String InlineInfo
-  | InlineHole String InlineInfo
+  = InlinePlus Int String InlineInfo
+  | InlineNumber Int String InlineInfo
+  | InlineHole Int String InlineInfo
 
 type InlineInfo = { anchor :: Maybe Int , focus :: Maybe Int }
 
@@ -113,13 +114,13 @@ blockFromContent inlines =
         }
 
       accum :: BFromCState -> LightInline -> BFromCState
-      accum state (InlinePlus str info) = accumText str (accumAnchorFocus info)
-      accum state (InlineNumber str info) = accumText str (accumAnchorFocus info)
-      accum state (InlineHole str info) = accumText str (accumAnchorFocus info)
+      accum state (InlinePlus i str info) = accumText i str (accumAnchorFocus info)
+      accum state (InlineNumber i str info) = accumText i str (accumAnchorFocus info)
+      accum state (InlineHole i str info) = accumText i str (accumAnchorFocus info)
 
       -- For each LightInline, add its text to the current state
-      accumText :: String -> BFromCState -> BFromCState
-      accumText str state =
+      accumText :: Int -> String -> BFromCState -> BFromCState
+      accumText key str state =
         let tLen = length state.text
             sLen = length str
         in state
@@ -128,7 +129,7 @@ blockFromContent inlines =
              , entityRanges = snoc state.entityRanges
                { offset: tLen
                , length: sLen
-               , key: state.tag -- XXX
+               , key: key
                }
              }
 
@@ -185,34 +186,39 @@ subPath step path = case path of
        then Just rest
        else Nothing
 
-contentFromSyntax :: Syntax -> Maybe Path -> Maybe Path -> Array LightInline
-contentFromSyntax syntax anchor focus =
+contentFromSyntax :: Syntax -> Maybe Path -> Maybe Path -> State Int (Tuple (Array LightInline) (Map Int Path))
+contentFromSyntax syntax anchor focus = do
   let anchorOffset = getOffset anchor
       focusOffset = getOffset focus
-  in case syntax of
-        -- XXX need to flatten?
-        Plus l r -> concat
-          [ [InlinePlus "(" (inlineSelection 0 1 anchorOffset focusOffset)]
-          , contentFromSyntax
-              l
-              (subPath StepLeft anchor)
-              (subPath StepLeft focus)
-          , [InlinePlus " + " (inlineSelection 1 3 anchorOffset focusOffset)]
-          , contentFromSyntax
-              r
-              (subPath StepRight anchor)
-              (subPath StepRight focus)
-          , [InlinePlus ")" (inlineSelection 4 1 anchorOffset focusOffset)]
-          ]
-        SNumber n ->
-          let text = show n
-          in [
-               InlineNumber text (inlineSelection 0 (length text) anchorOffset focusOffset)
-             ]
-        Hole str ->
-          [
-            InlineHole str (inlineSelection 0 (length str) anchorOffset focusOffset)
-          ]
+  myId <- get
+  modify (_+1)
+  case syntax of
+    -- XXX need to flatten?
+    Plus l r -> do
+      l' <- contentFromSyntax
+        l
+        (subPath StepLeft anchor)
+        (subPath StepLeft focus)
+      r' <- contentFromSyntax
+        r
+        (subPath StepRight anchor)
+        (subPath StepRight focus)
+      concat
+        [ [InlinePlus myId "(" (inlineSelection 0 1 anchorOffset focusOffset)]
+        , l'
+        , [InlinePlus myId " + " (inlineSelection 1 3 anchorOffset focusOffset)]
+        , r'
+        , [InlinePlus myId ")" (inlineSelection 4 1 anchorOffset focusOffset)]
+        ]
+    SNumber n ->
+      let text = show n
+      in [
+           InlineNumber myId text (inlineSelection 0 (length text) anchorOffset focusOffset)
+         ]
+    Hole str ->
+      [
+        InlineHole myId str (inlineSelection 0 (length str) anchorOffset focusOffset)
+      ]
 
 
 -- need to make all these aware of location of cursor
@@ -228,7 +234,7 @@ operate (Plus l r) path action = case path of
 operate (Hole name) (PathOffset o) (Typing char)
   | name == "" && isDigit char = Right (SNumber (cToI char))
   | name == "" && char == '(' = Right (Plus (Hole "l") (Hole "r"))
-  | otherwise = Right (Hole (name ++ C.toString char))
+  | otherwise = Right (Hole (name <> show char))
 operate (SNumber n) (PathOffset o) (Typing char)
   | isDigit char = Right (SNumber (n * 10 + cToI char))
 operate (SNumber n) (PathOffset o) Backspace
@@ -260,35 +266,68 @@ type ContentState =
   , selection :: RawSelection
   }
 
-rawSelectionToSelection :: RawSelection -> Selection
-rawSelectionToSelection rawSelection =
+rawSelectionToSelection :: RawSelection -> Syntax -> Either String Selection
+rawSelectionToSelection rawSelection syntax =
   if rawSelection.anchorOffset == rawSelection.focusOffset
-  then AtomicSelection (makePath rawSelection.anchorOffset)
-  else SpanningSelection (makePath rawSelection.anchorOffset) (makePath rawSelection.focusOffset)
-    where makePath = undefined
+  then AtomicSelection <$> makePathMaybe syntax rawSelection.anchorOffset
+  else SpanningSelection
+         <$> makePathMaybe syntax rawSelection.anchorOffset
+         <*> makePathMaybe syntax rawSelection.focusOffset
+
+    -- XXX horrible naming please fix
+    where makePathMaybe :: Syntax -> Int -> Either String Path
+          makePathMaybe syntax n = case makePath syntax n of
+            Left path -> Right path
+            Right c -> Left
+              ("rawSelectionToSelection overflow: " <> show n <> " demanded, "
+              <> show c <> " consumed")
+
+          -- keep moving in to the outermost syntax holding this offset
+          -- either give back the resulting path or the number of chars
+          -- consumed
+          makePath :: Syntax -> Int -> Either Path Int
+          makePath (SNumber n) offset =
+            if offset < length (show n)
+            then Left (PathOffset offset)
+            else Right offset
+
+          -- pretty much identical
+          makePath (Hole name) offset =
+            if offset < length name
+            then Left (PathOffset offset)
+            else Right offset
+
+          -- [left] + [right]
+          makePath (Plus left right) offset = case makePath left offset of
+            Left path -> Left path
+            Right consumed ->
+              let offset' = offset - consumed
+              in if offset' < 3
+                 then Left (PathOffset offset')
+                 else ((consumed + 3) + _) <$> makePath right offset'
 
 rawOperate :: Syntax
            -> RawSelection
            -> Action
            -> Either String ContentState
-rawOperate syntax rawSelection action =
-  let selection = rawSelectionToSelection rawSelection
-      syntax' = operate syntax selection action
-      -- TODO can probably get this from rawSelectionToSelection
-      content = case selection of
+rawOperate syntax rawSelection action = do
+  selection <- rawSelectionToSelection rawSelection syntax
+  syntax' <- operate syntax selection action
+  -- TODO can probably get this from rawSelectionToSelection
+  let content = case selection of
         SpanningSelection l r -> contentFromSyntax syntax' l r
         AtomicSelection x -> contentFromSyntax syntax' x x
       contentState = blockFromContent content
-  in contentState
+  pure contentState
 
 -- TODO change this from "operate" to "rawOperate"
 rawOperateForeign :: Foreign -> Foreign -> Foreign -> Foreign
-rawOperateForeign contentState action =
+rawOperateForeign syntax rawSelection action =
   let allRead = Tuple3 <$> read syntax <*> read rawSelection <*> read action
       result :: Either String Syntax
       result = case allRead of
                  Left err -> Left (show err)
-                 Right (Tuple3 syntax' path' action') ->
+                 Right (Tuple3 syntax' rawSelection' action') ->
                    rawOperate syntax' rawSelection' action'
       toObj :: Syntax -> Foreign
       toObj (SNumber i) = toForeign { tag: "number", value: i }
