@@ -1,22 +1,26 @@
 module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> RawDraftContentBlock`
 
-import Prelude (otherwise, (/), (<), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show)
+import Prelude (otherwise, (/), (<), (>), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show)
 
 import Control.Monad.State (State, modify, get, evalState)
-import Data.Array ((:), {-uncons, reverse,-} concat, snoc)
+import Data.Array ((:), concat, snoc)
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
-import Data.Foldable ({-foldr,-} foldl)
-import Data.Foreign (Foreign, {-F,-} ForeignError(JSONError), toForeign)
+import Data.Foldable (foldl)
+import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Function.Uncurried (mkFn3, Fn3)
 import Data.Int as I
 import Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
-import Data.String (length)
--- import Data.Semigroup (class Semigroup)
+import Data.String (length, take, drop)
+import Data.String as String
 import Data.Tuple (Tuple(Tuple), fst)
+
+
+data Tuple3 a b c = Tuple3 a b c
 
 data PathStep = StepLeft | StepRight
 
@@ -69,7 +73,7 @@ isDigit :: Char -> Boolean
 isDigit x = x >= '0' && x <= '9'
 
 cToI :: Char -> Int
-cToI c = case I.fromString (show c) of
+cToI c = case I.fromString (String.singleton c) of
   Just i -> i
   Nothing -> 0
 
@@ -96,6 +100,10 @@ type RawDraftContentBlock =
   , entityRanges :: Array EntityRange
   }
 
+blockKey :: String
+blockKey = "editor-block-key"
+
+-- internal "block from content" accumulator state
 type BFromCState =
   { currentOffset :: Int
   -- XXX something more descriptive than String?
@@ -106,22 +114,6 @@ type BFromCState =
   , text :: String
   , entityRanges :: Array EntityRange
   }
-
--- type AnchorFocusInfo =
---   { anchorKey :: Maybe String
---   , anchorOffset :: Int
---   , focusKey :: Maybe String
---   , focusOffset :: Int
---   }
---
--- type TextInfo =
---   { currentOffset :: Int
---   , text :: String
---   , entityRanges :: Array EntityRange
---   }
-
-blockKey :: String
-blockKey = "editor-block-key"
 
 blockFromContent :: Array LightInline -> ContentState
 blockFromContent inlines =
@@ -276,7 +268,15 @@ operateAtomic (Plus l r) path action = case path of
 operateAtomic (Hole name) (PathOffset o) (Typing char)
   | name == "" && isDigit char = Right (SNumber (cToI char))
   | name == "" && char == '(' = Right (Plus (Hole "l") (Hole "r"))
-  | otherwise = Right (Hole (name <> show char))
+  | otherwise = Right (Hole (name <> String.singleton char))
+operateAtomic (Hole name) (PathOffset o) Backspace
+  | name == "" = Left "backspacing out of empty hole"
+  | o > length name
+  = Left "inconsistency: backspacing with cursor past end of hole"
+  | o == 0 = Left "backspacking out the left of a hole"
+  | otherwise
+  = let newName = take (o - 1) name <> drop o name
+    in Right (Hole newName)
 operateAtomic (SNumber n) (PathOffset o) (Typing char)
   | isDigit char = Right (SNumber (n * 10 + cToI char))
 operateAtomic (SNumber n) (PathOffset o) Backspace
@@ -284,8 +284,6 @@ operateAtomic (SNumber n) (PathOffset o) Backspace
   | otherwise = Right (Hole "")
 
 operateAtomic _ _ _ = Left "had steps remaining at a leaf"
-
-data Tuple3 a b c = Tuple3 a b c
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
 type RawSelection =
@@ -327,45 +325,46 @@ type ContentState =
 rawSelectionToSelection :: RawSelection -> Syntax -> Either String Selection
 rawSelectionToSelection rawSelection syntax =
   if rawSelection.anchorOffset == rawSelection.focusOffset
-  then AtomicSelection <$> makePathMaybe syntax rawSelection.anchorOffset
+  then AtomicSelection <$> makePath syntax rawSelection.anchorOffset
   else SpanningSelection
-         <$> makePathMaybe syntax rawSelection.anchorOffset
-         <*> makePathMaybe syntax rawSelection.focusOffset
+         <$> makePath syntax rawSelection.anchorOffset
+         <*> makePath syntax rawSelection.focusOffset
 
-    -- XXX horrible naming please fix
-    where makePathMaybe :: Syntax -> Int -> Either String Path
-          makePathMaybe syntax n = case makePath syntax n of
-            Left path -> Right path
-            Right c -> Left
-              ("rawSelectionToSelection overflow: " <> show n <> " demanded, "
-              <> show c <> " consumed")
+    where makePath :: Syntax -> Int -> Either String Path
+          makePath syntax n = lmap
+            (\c -> "rawSelectionToSelection overflow: " <>
+              show n <> " demanded, " <> show c <> " consumed")
+            (consumePath syntax n)
 
           -- keep moving in to the outermost syntax holding this offset
           -- either give back the resulting path or the number of chars
           -- consumed
-          makePath :: Syntax -> Int -> Either Path Int
-          makePath (SNumber n) offset =
+          consumePath :: Syntax -> Int -> Either Int Path
+          consumePath (SNumber n) offset =
             let nlen = length (show n)
             in if offset <= nlen
-               then Left (PathOffset offset)
-               else Right nlen
+               then Right (PathOffset offset)
+               else Left nlen
 
           -- pretty much identical
-          makePath (Hole name) offset =
+          consumePath (Hole name) offset =
             let namelen = length name
             in if offset <= namelen
-               then Left (PathOffset offset)
-               else Right namelen
+               then Right (PathOffset offset)
+               else Left namelen
 
           -- ([left] + [right])
-          makePath (Plus left right) offset = case makePath left (offset - 1) of
-                                                   -- XXX what about StepRight
-            Left path -> Left (PathCons StepLeft path)
-            Right consumed ->
-              let offset' = offset - consumed - 1
-              in if offset' < 3
-                 then Left (PathOffset offset')
-                 else ((consumed + 4) + _) <$> makePath right offset'
+          consumePath (Plus left right) offset =
+            case consumePath left (offset - 1) of
+              -- XXX what about StepRight
+              Right path -> Right (PathCons StepLeft path)
+              Left consumed ->
+                let offset' = offset - (consumed + 1)
+                in if offset' < 3
+                   then Right (PathOffset offset')
+                   else case consumePath right (offset' - 3) of
+                          Right path -> Right (PathCons StepRight path)
+                          Left consumed' -> Left (consumed' + consumed + 4)
 
 rawOperate :: Syntax
            -> RawSelection

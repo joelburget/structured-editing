@@ -22,29 +22,94 @@ import {operateJs} from './purescript/output/Main/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
-// 1 + hole
+// (1 + hole)
+const initState = {
+  tag: 'plus',
+  l: {
+    tag: 'number',
+    value: 1,
+  },
+  r: {
+    tag: 'hole',
+    name: 'hole',
+  },
+};
+
 console.log(operateJs(
-      {
-        tag: 'plus',
-        l: {
-          tag: 'number',
-          value: 1,
-        },
-        r: {
-          tag: 'hole',
-          name: 'hole',
-        },
-      },
-      {
-        anchorOffset: 2,
-        anchorKey: '',
-        focusOffset: 2,
-        focusKey: '',
-      },
-      {
-        tag: 'typing',
-        value: '0',
-      }
+  initState,
+  {
+    anchorOffset: 2,
+    anchorKey: '',
+    focusOffset: 2,
+    focusKey: '',
+  },
+  {
+    tag: 'typing',
+    value: '0',
+  }
+));
+
+console.log(operateJs(
+  initState,
+  {
+    anchorOffset: 9,
+    anchorKey: '',
+    focusOffset: 9,
+    focusKey: '',
+  },
+  {
+    tag: 'typing',
+    value: 'y',
+  }
+));
+
+console.log(operateJs(
+  initState,
+  {
+    anchorOffset: 9,
+    anchorKey: '',
+    focusOffset: 9,
+    focusKey: '',
+  },
+  { tag: 'backspace', }
+));
+
+// (1 + _)
+const emptyHole = {
+  tag: 'plus',
+  l: {
+    tag: 'number',
+    value: 1,
+  },
+  r: {
+    tag: 'hole',
+    name: '',
+  },
+};
+
+console.log(operateJs(
+  emptyHole,
+  {
+    anchorOffset: 5,
+    anchorKey: '',
+    focusOffset: 5,
+    focusKey: '',
+  },
+  {
+    tag: 'typing',
+    value: '9',
+  }
+));
+
+console.log(operateJs(
+  emptyHole,
+  {
+    anchorOffset: 5,
+    anchorKey: '',
+    focusOffset: 5,
+    focusKey: '',
+  },
+  { tag: 'backspace', }
 ));
 
 // Practice / learn by writing an editor for binary addition expressions with
