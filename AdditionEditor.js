@@ -4,6 +4,7 @@ import {
   convertFromRaw,
   // convertToRaw,
   CompositeDecorator,
+  ContentBlock,
   ContentState,
   Editor,
   EditorState,
@@ -14,103 +15,15 @@ import {
 import React from 'react';
 
 import type {
-  ContentBlock,
   RawDraftContentBlock,
 } from 'draft-js';
 
-import {operateJs} from './purescript/output/Main/index.js';
+import {initJs, operateJs, contentStateFromSelectSyntaxJs} from './purescript/output/Main/index.js';
+// contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
+// init :: Syntax -> RawSelection -> Either String ContentState
+// rawOperate :: Syntax -> RawSelection -> Action -> Either String (Tuple Syntax ContentState)
 
 const {hasCommandModifier} = KeyBindingUtil;
-
-// (1 + hole)
-const initState = {
-  tag: 'plus',
-  l: {
-    tag: 'number',
-    value: 1,
-  },
-  r: {
-    tag: 'hole',
-    name: 'hole',
-  },
-};
-
-console.log(operateJs(
-  initState,
-  {
-    anchorOffset: 2,
-    anchorKey: '',
-    focusOffset: 2,
-    focusKey: '',
-  },
-  {
-    tag: 'typing',
-    value: '0',
-  }
-));
-
-console.log(operateJs(
-  initState,
-  {
-    anchorOffset: 9,
-    anchorKey: '',
-    focusOffset: 9,
-    focusKey: '',
-  },
-  {
-    tag: 'typing',
-    value: 'y',
-  }
-));
-
-console.log(operateJs(
-  initState,
-  {
-    anchorOffset: 9,
-    anchorKey: '',
-    focusOffset: 9,
-    focusKey: '',
-  },
-  { tag: 'backspace', }
-));
-
-// (1 + _)
-const emptyHole = {
-  tag: 'plus',
-  l: {
-    tag: 'number',
-    value: 1,
-  },
-  r: {
-    tag: 'hole',
-    name: '',
-  },
-};
-
-console.log(operateJs(
-  emptyHole,
-  {
-    anchorOffset: 5,
-    anchorKey: '',
-    focusOffset: 5,
-    focusKey: '',
-  },
-  {
-    tag: 'typing',
-    value: '9',
-  }
-));
-
-console.log(operateJs(
-  emptyHole,
-  {
-    anchorOffset: 5,
-    anchorKey: '',
-    focusOffset: 5,
-    focusKey: '',
-  },
-  { tag: 'backspace', }
-));
 
 // Practice / learn by writing an editor for binary addition expressions with
 // holes
@@ -135,9 +48,6 @@ const entityMap = {
     data: {type: 'plus'},
   },
 };
-
-type PathStep = 'left' | 'right' | number;
-type Path = Array<PathStep>;
 
 const components = {
   plus: ({children}) => {
@@ -176,105 +86,6 @@ const DataDecorator = {
   },
 };
 
-type Plus = {
-  tag: 'plus';
-  l: Syntax;
-  r: Syntax;
-};
-
-type SNumber = {
-  tag: 'number';
-  value: number;
-};
-
-type Hole = {
-  tag: 'hole';
-  name: string;
-};
-
-type Syntax =  Plus | SNumber | Hole;
-
-// A selection end relative to the current node is either
-// * at some offset within it
-// * away to the left
-// * away to the right
-// * or the focus is not within this textbox
-// type SelectionEndOffset = number | 'left' | 'right' | 'unfocused';
-
-type LightInline = {
-  tag: string;
-  text: string;
-
-  // if these keys exist they denote the offsets within this inline string of
-  // the anchor and / or focus.
-  anchor?: number;
-  focus?: number;
-};
-type LightBlock = Array<LightInline>;
-
-
-export function blocksFromContent(
-  lightBlocks: Array<LightBlock>
-): Array<RawDraftContentBlock> {
-  let currentOffset = 0;
-  let anchorKey = null;
-  let anchorOffset = 0;
-  let focusKey = null;
-  let focusOffset = 0;
-
-  const blocks = lightBlocks.map(block => {
-    let text = '';
-    let entityRanges = [];
-
-    // {text, tag}
-    for (let inline of block) {
-      if (inline.anchor != null) {
-        anchorOffset = currentOffset + inline.anchor;
-        anchorKey = inline.tag;
-      }
-      if (inline.focus != null) {
-        focusOffset = currentOffset + inline.focus;
-        focusKey = inline.tag;
-      }
-      currentOffset += text.length;
-      entityRanges.push({
-        offset: text.length,
-        length: inline.text.length,
-        key: inline.tag,
-      });
-      text += inline.text;
-    }
-
-    return {text, entityRanges, type: 'unstyled'};
-  });
-
-  return {
-    blocks,
-    anchorOffset, anchorKey,
-    focusOffset, focusKey,
-  };
-}
-
-type SyntaxAndSelection = {
-  syntax: Syntax;
-  anchor: Path;
-  focus: Path;
-};
-
-function makeContent(encoding: SyntaxAndSelection): ContentState {
-  const {syntax, anchor, focus} = encoding;
-  const {
-    blocks,
-    anchorOffset, anchorKey,
-    focusOffset, focusKey,
-  } = blocksFromContent(contentFromSyntax(syntax, anchor, focus));
-  return {
-    content: convertFromRaw({blocks, entityMap}),
-    anchorOffset, anchorKey,
-    focusOffset, focusKey,
-  };
-}
-
 
 // Operations to support:
 // * backspace
@@ -297,14 +108,22 @@ function additionKeyBindingFn(e: SyntheticKeyboardEvent): string {
   return getDefaultKeyBinding(e);
 }
 
-export default class AdditionEditor extends React.Component {
-  // state: {
-  //   editorState: EditorState;
-  // };
-  // onChange: Function;
+const defaultSelection = {
+  anchorKey: '',
+  anchorOffset: 0,
+  focusKey: '',
+  focusOffset: 0,
+};
 
-  constructor(props: {content: ContentState}) {
+export default class AdditionEditor extends React.Component {
+  constructor(props) {
     super(props);
+
+    const contentState = initJs(
+      props.selectSyntax.syntax,
+      Object.assign({}, defaultSelection, props.selectSyntax.selection)
+    );
+    this.state = {contentState};
 
     this.onChange = command => this._onChange(command);
     this.handleKeyCommand = command => this._handleKeyCommand(command);
@@ -312,11 +131,16 @@ export default class AdditionEditor extends React.Component {
   }
 
   _onChange(command) {
-    const {structure} = this.props;
+    const {syntax} = this.props.selectSyntax;
+    const {
+      value0: newSyntax,
+      value1: contentState,
+    } = operateJs(syntax, this.state.contentState.selection, command);
+    // XXX gross!
+    this.setState({contentState});
     this.props.onChange(
-      structure,
-      command/*,
-      operateJs(structure, XXX, command)*/
+      newSyntax,
+      command
     );
   }
 
@@ -329,7 +153,7 @@ export default class AdditionEditor extends React.Component {
   }
 
   _handleKeyCommand(command: string): boolean {
-    const {structure} = this.props;
+    const {syntax} = this.props;
     switch (command) {
       // case 'additioneditor-number':
       // case 'additioneditor-openparen':
@@ -349,21 +173,27 @@ export default class AdditionEditor extends React.Component {
 
   render() {
     const {
-      content,
-      anchorOffset, anchorKey,
-      focusOffset, focusKey,
-    } = makeContent(this.props.structure);
-    let editorState = EditorState.createWithContent(
-      content,
-      DataDecorator
-    );
-    const selectionState = editorState.getSelection().merge({
-      focusKey, focusOffset,
-      anchorKey, anchorOffset,
-      isBackward: focusOffset < anchorOffset,
+      block,
+      selection: {
+        anchorOffset, anchorKey,
+        focusOffset, focusKey,
+      },
+    } = this.state.contentState;
+    const contentState = convertFromRaw({
+      blocks: [Object.assign({}, block, {type: 'unstyled'})],
+      entityMap: {},
     });
-    editorState = EditorState.forceSelection(editorState, selectionState);
-    console.log(editorState.toJS());
+    let editorState = EditorState.createWithContent(
+      contentState
+      /*, DataDecorator*/
+    );
+    // const selectionState = editorState.getSelection().merge({
+    //   focusKey, focusOffset,
+    //   anchorKey, anchorOffset,
+    //   isBackward: focusOffset < anchorOffset,
+    // });
+    // editorState = EditorState.forceSelection(editorState, selectionState);
+    console.log(editorState.toJS(), editorState.getCurrentContent().getFirstBlock().getText());
 
     return (
       <div style={styles.root}>

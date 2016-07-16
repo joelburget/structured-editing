@@ -1,16 +1,16 @@
 module Main where
--- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> RawDraftContentBlock`
+-- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> (Syntax, ContentState)`
 
-import Prelude (otherwise, (/), (<), (>), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show)
+import Prelude (otherwise, (/), (<), (>), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show, (<<<))
 
 import Control.Monad.State (State, modify, get, evalState)
 import Data.Array ((:), concat, snoc)
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
-import Data.Function.Uncurried (mkFn3, Fn3)
+import Data.Function.Uncurried (mkFn3, Fn3, mkFn2, Fn2, mkFn1, Fn1)
 import Data.Int as I
 import Data.Map as Map
 import Data.Map (Map)
@@ -94,14 +94,14 @@ newtype BlockKey = BlockKey String
 newtype EntityKey = EntityKey String
 
 type RawDraftContentBlock =
-  { key :: Maybe BlockKey
+  { key :: BlockKey
     -- type :: 'unstyled'
   , text :: String
   , entityRanges :: Array EntityRange
   }
 
 blockKey :: String
-blockKey = "editor-block-key"
+blockKey = "editorblockkey"
 
 -- internal "block from content" accumulator state
 type BFromCState =
@@ -168,7 +168,7 @@ blockFromContent inlines =
         in state''
 
       finalState = foldl accum initialState inlines
-  in { block: { key: Nothing
+  in { block: { key: BlockKey blockKey
               , text: finalState.text
               , entityRanges: finalState.entityRanges
               }
@@ -354,9 +354,10 @@ rawSelectionToSelection rawSelection syntax =
                else Left namelen
 
           -- ([left] + [right])
+          --
+          -- TODO automate this kind of offset calculation
           consumePath (Plus left right) offset =
             case consumePath left (offset - 1) of
-              -- XXX what about StepRight
               Right path -> Right (PathCons StepLeft path)
               Left consumed ->
                 let offset' = offset - (consumed + 1)
@@ -366,40 +367,108 @@ rawSelectionToSelection rawSelection syntax =
                           Right path -> Right (PathCons StepRight path)
                           Left consumed' -> Left (consumed' + consumed + 4)
 
-rawOperate :: Syntax
-           -> RawSelection
-           -> Action
-           -> Either String ContentState
-rawOperate syntax rawSelection action = do
-  selection <- rawSelectionToSelection rawSelection syntax
-  syntax' <- operate syntax selection action
-  -- TODO can probably get this from rawSelectionToSelection
-  let yieldsContent = case selection of
-        SpanningSelection l r -> contentFromSyntax syntax' (Just l) (Just r)
-        AtomicSelection x -> contentFromSyntax syntax' (Just x) (Just x)
-      contentAndKeymapping = evalState yieldsContent 0
-      contentState = blockFromContent (fst contentAndKeymapping)
-  pure contentState
-
--- TODO change this from "operate" to "rawOperate"
 rawOperateForeign :: Foreign -> Foreign -> Foreign -> Foreign
 rawOperateForeign syntax rawSelection action =
   let allRead = Tuple3 <$> read syntax <*> read rawSelection <*> read action
 
-      result :: Either String ContentState
-      result = case allRead of
-                 Left err -> Left (show err)
-                 Right (Tuple3 syntax' (WrappedRawSelection rawSelection') action') ->
-                   rawOperate syntax' rawSelection' action'
+      -- | "raw" in the sense that it's operating on a raw selection
+      rawOperate :: Syntax
+                 -> RawSelection
+                 -> Action
+                 -> Either String (Tuple Syntax ContentState)
+      rawOperate syntax rawSelection action = do
+        selection <- rawSelectionToSelection rawSelection syntax
+        syntax' <- operate syntax selection action
+        -- TODO can probably get this from rawSelectionToSelection
+        let yieldsContent = case selection of
+              SpanningSelection l r -> contentFromSyntax syntax' (Just l) (Just r)
+              AtomicSelection x -> contentFromSyntax syntax' (Just x) (Just x)
+            contentAndKeymapping = evalState yieldsContent 0
+            contentState = blockFromContent (fst contentAndKeymapping)
+        pure (Tuple syntax contentState)
 
-      -- toObj :: Syntax -> Foreign
-      -- toObj (SNumber i) = toForeign { tag: "number", value: i }
-      -- toObj (Plus l r) = toForeign { tag: "plus", l: toObj l, r: toObj r }
-      -- toObj (Hole name) = toForeign { tag: "hole", name: name }
+      result :: Either String (Tuple Syntax ContentState)
+      result = case allRead of
+        Left err -> Left (show err)
+        Right (Tuple3 syntax' (WrappedRawSelection rawSelection') action') ->
+          rawOperate syntax' rawSelection' action'
 
   in case result of
        Left err -> toForeign err
-       Right result' -> toForeign (result' :: ContentState)
+       Right result' -> toForeign result'
 
 operateJs :: Fn3 Foreign Foreign Foreign Foreign
 operateJs = mkFn3 rawOperateForeign
+
+data SelectSyntax = SelectSyntax
+  { anchor :: Int
+  , focus :: Int
+  , syntax :: Syntax
+  }
+
+instance selectSyntaxIsForeign :: IsForeign SelectSyntax where
+  read obj = do
+    anchor <- readProp "anchor" obj
+    focus <- readProp "focus" obj
+    syntax <- readProp "syntax" obj
+    pure (SelectSyntax
+      { anchor: anchor
+      , focus: focus
+      , syntax: syntax
+      }
+      )
+
+contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
+contentStateFromSelectSyntax (SelectSyntax rec) = do
+  let rawSelection =
+        { anchorOffset: rec.anchor
+        , anchorKey: ""
+        , focusOffset: rec.focus
+        , focusKey: ""
+        }
+  selection <- rawSelectionToSelection rawSelection rec.syntax
+  -- TODO can probably get this from rawSelectionToSelection
+  let yieldsContent = case selection of
+        SpanningSelection l r -> contentFromSyntax rec.syntax (Just l) (Just r)
+        AtomicSelection x -> contentFromSyntax rec.syntax (Just x) (Just x)
+      contentAndKeymapping = evalState yieldsContent 0
+      contentState = blockFromContent (fst contentAndKeymapping)
+  pure contentState
+
+contentStateFromSelectSyntaxJs :: Fn1 Foreign Foreign
+contentStateFromSelectSyntaxJs =
+  let eitherF :: Foreign -> Either String ContentState
+      eitherF f = do
+        selectSyntax <- lmap show (read f)
+        contentStateFromSelectSyntax selectSyntax
+      foreignF :: Foreign -> Foreign
+      foreignF = either toForeign toForeign <<< eitherF
+  in mkFn1 foreignF
+
+initForeign :: Foreign -> Foreign -> Foreign
+initForeign syntax rawSelection =
+  let allRead = Tuple <$> read syntax <*> read rawSelection
+
+      rawInit :: Syntax
+              -> RawSelection
+              -> Either String ContentState
+      rawInit syntax rawSelection = do
+        selection <- rawSelectionToSelection rawSelection syntax
+        let yieldsContent = case selection of
+              SpanningSelection l r -> contentFromSyntax syntax (Just l) (Just r)
+              AtomicSelection x -> contentFromSyntax syntax (Just x) (Just x)
+            contentAndKeymapping = evalState yieldsContent 0
+            contentState = blockFromContent (fst contentAndKeymapping)
+        pure contentState
+
+      result :: Either String ContentState
+      result = case allRead of
+        Left err -> Left (show err)
+        Right (Tuple syntax' (WrappedRawSelection rawSelection')) ->
+          rawInit syntax' rawSelection'
+  in case result of
+       Left err -> toForeign err
+       Right result' -> toForeign result'
+
+initJs :: Fn2 Foreign Foreign Foreign
+initJs = mkFn2 initForeign
