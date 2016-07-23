@@ -30,9 +30,17 @@ const emptyHole = {
   },
   r: {
     tag: 'hole',
-    name: '',
+    name: '_',
   },
 };
+
+function focusRef(ref) {
+  if (ref) {
+    window.setTimeout(() => {
+      ref.focus();
+    });
+  }
+}
 
 storiesOf('AdditionEditor', module)
   .add('(1 + hole|)', () => {
@@ -41,7 +49,13 @@ storiesOf('AdditionEditor', module)
       anchor: 9,
       focus: 9,
     };
-    return <AdditionEditor onChange={onChange} selectSyntax={selectSyntax} />;
+    return (
+      <AdditionEditor
+        onChange={onChange}
+        selectSyntax={selectSyntax}
+        ref={focusRef}
+      />
+    );
   })
   .add('(1 + _|)', () => {
     const selectSyntax = {
@@ -49,9 +63,15 @@ storiesOf('AdditionEditor', module)
       anchor: 6,
       focus: 6,
     };
-    return <AdditionEditor onChange={onChange} selectSyntax={selectSyntax} />;
+    return (
+      <AdditionEditor
+        onChange={onChange}
+        selectSyntax={selectSyntax}
+        ref={focusRef}
+      />
+    );
   })
-  .add('|1 + 1', () => {
+  .add('|(1 + 1)', () => {
     const selectSyntax = {
       syntax: {
         tag: 'plus',
@@ -69,8 +89,14 @@ storiesOf('AdditionEditor', module)
       anchor: 0,
       focus: 0,
     };
-    return <AdditionEditor onChange={onChange} selectSyntax={selectSyntax} />;
-  }).add('1 + (2 + 3)', () => {
+    return (
+      <AdditionEditor
+        onChange={onChange}
+        selectSyntax={selectSyntax}
+        ref={focusRef}
+      />
+    );
+  }).add('|(1| + (2 + 3))', () => {
     const selectSyntax = {
       syntax: {
         tag: 'plus',
@@ -95,5 +121,11 @@ storiesOf('AdditionEditor', module)
       anchor: 0,
       focus: 2,
     };
-    return <AdditionEditor onChange={onChange} selectSyntax={selectSyntax} />;
+    return (
+      <AdditionEditor
+        onChange={onChange}
+        selectSyntax={selectSyntax}
+        ref={focusRef}
+      />
+    );
   });

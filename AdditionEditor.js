@@ -18,10 +18,7 @@ import type {
   RawDraftContentBlock,
 } from 'draft-js';
 
-import {initJs, operateJs, contentStateFromSelectSyntaxJs} from './purescript/output/Main/index.js';
-// contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
-// init :: Syntax -> RawSelection -> Either String ContentState
-// rawOperate :: Syntax -> RawSelection -> Action -> Either String (Tuple Syntax ContentState)
+import {operateJs, contentStateFromSelectSyntaxJs} from './purescript/output/Main/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
@@ -119,25 +116,31 @@ export default class AdditionEditor extends React.Component {
   constructor(props) {
     super(props);
 
-    const contentState = initJs(
-      props.selectSyntax.syntax,
-      Object.assign({}, defaultSelection, props.selectSyntax.selection)
-    );
-    this.state = {contentState};
+    this.state = props.selectSyntax;
+    // Object.assign({}, defaultSelection, props.selectSyntax.selection),
 
     this.onChange = command => this._onChange(command);
     this.handleKeyCommand = command => this._handleKeyCommand(command);
     this.handleBeforeInput = chars => this._handleBeforeInput(chars);
+    this.handleRawChange = editorState => this._handleRawChange(editorState);
+    this.focus = () => this.editor.focus();
   }
 
   _onChange(command) {
-    const {syntax} = this.props.selectSyntax;
+    const {syntax, anchor, focus} = this.props.selectSyntax;
+    const selection = {anchor, focus};
     const {
       value0: newSyntax,
-      value1: contentState,
-    } = operateJs(syntax, this.state.contentState.selection, command);
-    // XXX gross!
-    this.setState({contentState});
+      value1: newSelection,
+    } = operateJs(this.props.selectSyntax, command);
+    // TODO don't set state and call back props
+    if (newSelection == null || newSelection == null) {
+      debugger;
+    }
+    this.setState({
+      syntax: newSyntax,
+      selection: newSelection,
+    });
     this.props.onChange(
       newSyntax,
       command
@@ -167,18 +170,39 @@ export default class AdditionEditor extends React.Component {
     }
   }
 
-  _handleRawOnChange() {
-    console.log('raw onChange', arguments);
+  // "executed by the Editor when edits and selection changes occur". Lacking
+  // clear definition on which events fall through to here, we (for now) expect
+  // to only handle selection changes here. Should seek for clarity re which
+  // events can trigger this code path.
+  _handleRawChange(editorState) {
+    const selection = editorState.getSelection()
+    const anchor = selection.getAnchorOffset();
+    const focus = selection.getFocusOffset();
+    const {
+      anchor: oldAnchor,
+      focus: oldFocus,
+    } = this.state;
+    console.log(anchor , oldAnchor , focus , oldFocus);
+    if (anchor !== oldAnchor || focus !== oldFocus) {
+      this.setState({anchor, focus});
+    } else {
+      console.log('unhandled raw onChange', editorState.toJS());
+    }
   }
 
+// contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
+// init :: Syntax -> RawSelection -> Either String ContentState
+// operate :: Syntax -> RawSelection -> Action -> Either String (Tuple Syntax ContentState)
+
   render() {
+    const x =  contentStateFromSelectSyntaxJs(this.state);
     const {
       block,
       selection: {
         anchorOffset, anchorKey,
         focusOffset, focusKey,
       },
-    } = this.state.contentState;
+    } = x;
     const contentState = convertFromRaw({
       blocks: [Object.assign({}, block, {type: 'unstyled'})],
       entityMap: {},
@@ -187,22 +211,22 @@ export default class AdditionEditor extends React.Component {
       contentState
       /*, DataDecorator*/
     );
-    // const selectionState = editorState.getSelection().merge({
-    //   focusKey, focusOffset,
-    //   anchorKey, anchorOffset,
-    //   isBackward: focusOffset < anchorOffset,
-    // });
-    // editorState = EditorState.forceSelection(editorState, selectionState);
-    console.log(editorState.toJS(), editorState.getCurrentContent().getFirstBlock().getText());
+    const selectionState = editorState.getSelection().merge({
+      focusKey, focusOffset,
+      anchorKey, anchorOffset,
+      isBackward: focusOffset < anchorOffset,
+    });
+    editorState = EditorState.forceSelection(editorState, selectionState);
 
     return (
       <div style={styles.root}>
         <Editor
+          ref={elem => this.editor = elem}
           editorState={editorState}
           handleKeyCommand={this.handleKeyCommand}
           handleBeforeInput={this.handleBeforeInput}
           keyBindingFn={additionKeyBindingFn}
-          onChange={this._handleRawOnChange}
+          onChange={this.handleRawChange}
         />
       </div>
     );

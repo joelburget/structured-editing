@@ -10,7 +10,7 @@ import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
-import Data.Function.Uncurried (mkFn3, Fn3, mkFn2, Fn2, mkFn1, Fn1)
+import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Int as I
 import Data.Map as Map
 import Data.Map (Map)
@@ -19,8 +19,12 @@ import Data.String (length, take, drop)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple), fst)
 
+import Debug.Trace
 
 data Tuple3 a b c = Tuple3 a b c
+
+instance showTuple3 :: (Show a, Show b, Show c) => Show (Tuple3 a b c) where
+  show (Tuple3 a b c) = "(Tuple3 " <> show a <> " " <> show b <> " " <> show c <> ")"
 
 data PathStep = StepLeft | StepRight
 
@@ -38,9 +42,15 @@ data Path
   | PathCons PathStep Path
 
 
+instance pathIsEq :: Eq Path where
+  eq (PathOffset i) (PathOffset j) = i == j
+  eq (PathCons s1 p1) (PathCons s2 p2) = s1 == s2 && p1 == p2
+  eq _ _ = false
+
+
 instance pathIsShow :: Show Path where
-  show (PathOffset i) = "PathOffset " <> show i
-  show (PathCons s p) = "PathCons " <> show s <> " " <> show p
+  show (PathOffset i) = "(PathOffset " <> show i <> ")"
+  show (PathCons s p) = "(PathCons " <> show s <> " " <> show p <> ")"
 
 
 data Action
@@ -68,6 +78,11 @@ instance syntaxIsForeign :: IsForeign Syntax where
       "plus" -> Plus <$> readProp "l" obj <*> readProp "r" obj
       "hole" -> Hole <$> readProp "name" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
+
+instance syntaxIsShow :: Show Syntax where
+  show (SNumber i) = "(SNumber " <> show i <> ")"
+  show (Plus l r) = "(Plus " <> show l <> " " <> show r <> ")"
+  show (Hole str) = "(Hole " <> str <> ")"
 
 isDigit :: Char -> Boolean
 isDigit x = x >= '0' && x <= '9'
@@ -250,25 +265,46 @@ contentFromSyntax syntax anchor focus = do
       in pure (Tuple arr (Map.singleton myId []))
 
 
-operate :: Syntax -> Selection -> Action -> Either String Syntax
-operate syntax selection action = case selection of
-  AtomicSelection path -> operateAtomic syntax path action
-  SpanningSelection p1 p2 -> Left "spanning actions not yet implemented"
-
 -- need to make all these aware of location of cursor
-operateAtomic :: Syntax -> Path -> Action -> Either String Syntax
+operateAtomic :: Syntax -> Path -> Action -> Either String SelectSyntax
 operateAtomic (Plus l r) path action = case path of
-  PathCons StepLeft rest ->
-    Plus <$> operateAtomic l rest action <*> pure r
-  PathCons StepRight rest ->
-    Plus <$> pure l <*> operateAtomic r rest action
+  PathCons StepLeft rest -> do
+    SelectSyntax {selection, syntax} <- operateAtomic l rest action
+    case selection of
+      AtomicSelection path ->
+        pure (SelectSyntax {
+          selection: AtomicSelection (PathCons StepLeft path),
+          syntax: Plus syntax r
+          })
+      SpanningSelection _ _ -> Left "can't yet handle spanning selection"
+  PathCons StepRight rest -> do
+    SelectSyntax {selection, syntax} <- operateAtomic r rest action
+    case selection of
+      AtomicSelection path ->
+        pure (SelectSyntax {
+          selection: AtomicSelection (PathCons StepRight path),
+          syntax: Plus l syntax
+          })
+      SpanningSelection _ _ -> Left "can't yet handle spanning selection"
   -- TODO maybe we need to also handle parens?
   _ -> Left "ran out of steps when operating on Plus"
 
 operateAtomic (Hole name) (PathOffset o) (Typing char)
-  | name == "" && isDigit char = Right (SNumber (cToI char))
-  | name == "" && char == '(' = Right (Plus (Hole "l") (Hole "r"))
-  | otherwise = Right (Hole (name <> String.singleton char))
+  | name == "" && isDigit char = Right (
+      SelectSyntax {
+        syntax: SNumber (cToI char),
+        selection: AtomicSelection (PathOffset (o + 1))
+      })
+  | name == "" && char == '(' = Right (
+      SelectSyntax {
+        syntax: Plus (Hole "l") (Hole "r"),
+        selection: AtomicSelection (PathOffset (o + 1))
+      })
+  | otherwise = Right (
+      SelectSyntax {
+        syntax: Hole (name <> String.singleton char),
+        selection: AtomicSelection (PathOffset (o + 1))
+      })
 operateAtomic (Hole name) (PathOffset o) Backspace
   | name == "" = Left "backspacing out of empty hole"
   | o > length name
@@ -276,14 +312,41 @@ operateAtomic (Hole name) (PathOffset o) Backspace
   | o == 0 = Left "backspacking out the left of a hole"
   | otherwise
   = let newName = take (o - 1) name <> drop o name
-    in Right (Hole newName)
+    in Right (
+      SelectSyntax {
+        syntax: Hole newName,
+        selection: AtomicSelection (PathOffset (o - 1))
+      })
 operateAtomic (SNumber n) (PathOffset o) (Typing char)
-  | isDigit char = Right (SNumber (n * 10 + cToI char))
+  | isDigit char = Right (
+      SelectSyntax {
+        syntax: SNumber (n * 10 + cToI char),
+        selection: AtomicSelection (PathOffset (o + 1))
+      })
 operateAtomic (SNumber n) (PathOffset o) Backspace
-  | n >= 10 = Right (SNumber (n / 10))
-  | otherwise = Right (Hole "")
+  | n >= 10 = Right (
+      SelectSyntax {
+        syntax: SNumber (n / 10),
+        selection: AtomicSelection (PathOffset (o - 1))
+      })
+  | otherwise = Right (
+      SelectSyntax {
+        syntax: Hole "",
+        selection: AtomicSelection (PathOffset (o - 1))
+      })
 
 operateAtomic _ _ _ = Left "had steps remaining at a leaf"
+
+data RawSelectSyntax = RawSelectSyntax
+  { anchor :: Int
+  , focus :: Int
+  , syntax :: Syntax
+  }
+
+data SelectSyntax = SelectSyntax
+  { selection :: Selection
+  , syntax :: Syntax
+  }
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
 type RawSelection =
@@ -322,6 +385,21 @@ type ContentState =
   , selection :: RawSelection
   }
 
+unrawSelectSyntax :: RawSelectSyntax -> Either String SelectSyntax
+unrawSelectSyntax rss@(RawSelectSyntax {anchor, focus, syntax}) = do
+  selection <- rawSelectSyntaxToSelection rss
+  pure (SelectSyntax ({syntax, selection}))
+
+rawSelectSyntaxToSelection :: RawSelectSyntax -> Either String Selection
+rawSelectSyntaxToSelection (RawSelectSyntax {anchor, focus, syntax}) =
+  let rawSelection =
+        { anchorKey: ""
+        , anchorOffset: anchor
+        , focusKey: ""
+        , focusOffset: focus
+        }
+  in rawSelectionToSelection rawSelection syntax
+
 rawSelectionToSelection :: RawSelection -> Syntax -> Either String Selection
 rawSelectionToSelection rawSelection syntax =
   if rawSelection.anchorOffset == rawSelection.focusOffset
@@ -330,88 +408,67 @@ rawSelectionToSelection rawSelection syntax =
          <$> makePath syntax rawSelection.anchorOffset
          <*> makePath syntax rawSelection.focusOffset
 
-    where makePath :: Syntax -> Int -> Either String Path
-          makePath syntax n = lmap
-            (\c -> "rawSelectionToSelection overflow: " <>
-              show n <> " demanded, " <> show c <> " consumed")
-            (consumePath syntax n)
+makePath :: Syntax -> Int -> Either String Path
+makePath syntax n = lmap
+  (\c -> "rawSelectionToSelection overflow: " <>
+    show n <> " demanded, " <> show c <> " consumed")
+  (consumePath syntax n)
+  where
+    consumePath' :: Syntax -> Int -> Either Int Path
+    consumePath' s i =
+      let result = consumePath s i
+      in traceShow (Tuple3 s i result) \_ -> result
 
-          -- keep moving in to the outermost syntax holding this offset
-          -- either give back the resulting path or the number of chars
-          -- consumed
-          consumePath :: Syntax -> Int -> Either Int Path
-          consumePath (SNumber n) offset =
-            let nlen = length (show n)
-            in if offset <= nlen
-               then Right (PathOffset offset)
-               else Left nlen
+    -- keep moving in to the outermost syntax holding this offset
+    -- either give back the resulting path or the number of chars
+    -- consumed
+    consumePath :: Syntax -> Int -> Either Int Path
+    consumePath _ 0 = Right (PathOffset 0)
+    consumePath (SNumber n) offset =
+      let nlen = length (show n)
+      in if offset <= nlen
+         then Right (PathOffset offset)
+         else Left nlen
 
-          -- pretty much identical
-          consumePath (Hole name) offset =
-            let namelen = length name
-            in if offset <= namelen
-               then Right (PathOffset offset)
-               else Left namelen
+    -- pretty much identical
+    consumePath (Hole name) offset =
+      let namelen = length name
+      in if offset <= namelen
+         then Right (PathOffset offset)
+         else Left namelen
 
-          -- ([left] + [right])
-          --
-          -- TODO automate this kind of offset calculation
-          consumePath (Plus left right) offset =
-            case consumePath left (offset - 1) of
-              Right path -> Right (PathCons StepLeft path)
-              Left consumed ->
-                let offset' = offset - (consumed + 1)
-                in if offset' < 3
-                   then Right (PathOffset offset')
-                   else case consumePath right (offset' - 3) of
-                          Right path -> Right (PathCons StepRight path)
-                          Left consumed' -> Left (consumed' + consumed + 4)
+    -- ([left] + [right])
+    --
+    -- TODO automate this kind of offset calculation
+    consumePath (Plus left right) offset =
+      case consumePath left (offset - 1) of
+        Right path -> Right (PathCons StepLeft path)
+        Left consumed ->
+          let offset' = offset - (consumed + 1)
+          in if offset' < 3
+             then Right (PathOffset offset')
+             else case consumePath right (offset' - 3) of
+                    Right path -> Right (PathCons StepRight path)
+                    Left consumed' ->
+                      let subConsumed = consumed + consumed'
+                      in if offset - subConsumed <= 5
+                         then Right (PathOffset (offset - subConsumed))
+                         else Left (subConsumed + 5)
 
-rawOperateForeign :: Foreign -> Foreign -> Foreign -> Foreign
-rawOperateForeign syntax rawSelection action =
-  let allRead = Tuple3 <$> read syntax <*> read rawSelection <*> read action
+operateJs :: Fn2 Foreign Foreign Foreign
+operateJs = mkFn2 rawOperateForeign
 
-      -- | "raw" in the sense that it's operating on a raw selection
-      rawOperate :: Syntax
-                 -> RawSelection
-                 -> Action
-                 -> Either String (Tuple Syntax ContentState)
-      rawOperate syntax rawSelection action = do
-        selection <- rawSelectionToSelection rawSelection syntax
-        syntax' <- operate syntax selection action
-        -- TODO can probably get this from rawSelectionToSelection
-        let yieldsContent = case selection of
-              SpanningSelection l r -> contentFromSyntax syntax' (Just l) (Just r)
-              AtomicSelection x -> contentFromSyntax syntax' (Just x) (Just x)
-            contentAndKeymapping = evalState yieldsContent 0
-            contentState = blockFromContent (fst contentAndKeymapping)
-        pure (Tuple syntax contentState)
+operate :: SelectSyntax -> Action -> Either String SelectSyntax
+operate (SelectSyntax {selection, syntax}) action = case selection of
+  AtomicSelection path -> operateAtomic syntax path action
+  SpanningSelection p1 p2 -> Left "spanning actions not yet implemented"
 
-      result :: Either String (Tuple Syntax ContentState)
-      result = case allRead of
-        Left err -> Left (show err)
-        Right (Tuple3 syntax' (WrappedRawSelection rawSelection') action') ->
-          rawOperate syntax' rawSelection' action'
-
-  in case result of
-       Left err -> toForeign err
-       Right result' -> toForeign result'
-
-operateJs :: Fn3 Foreign Foreign Foreign Foreign
-operateJs = mkFn3 rawOperateForeign
-
-data SelectSyntax = SelectSyntax
-  { anchor :: Int
-  , focus :: Int
-  , syntax :: Syntax
-  }
-
-instance selectSyntaxIsForeign :: IsForeign SelectSyntax where
+instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
   read obj = do
     anchor <- readProp "anchor" obj
     focus <- readProp "focus" obj
     syntax <- readProp "syntax" obj
-    pure (SelectSyntax
+    pure (RawSelectSyntax
       { anchor: anchor
       , focus: focus
       , syntax: syntax
@@ -420,15 +477,8 @@ instance selectSyntaxIsForeign :: IsForeign SelectSyntax where
 
 contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
 contentStateFromSelectSyntax (SelectSyntax rec) = do
-  let rawSelection =
-        { anchorOffset: rec.anchor
-        , anchorKey: ""
-        , focusOffset: rec.focus
-        , focusKey: ""
-        }
-  selection <- rawSelectionToSelection rawSelection rec.syntax
   -- TODO can probably get this from rawSelectionToSelection
-  let yieldsContent = case selection of
+  let yieldsContent = case rec.selection of
         SpanningSelection l r -> contentFromSyntax rec.syntax (Just l) (Just r)
         AtomicSelection x -> contentFromSyntax rec.syntax (Just x) (Just x)
       contentAndKeymapping = evalState yieldsContent 0
@@ -439,36 +489,62 @@ contentStateFromSelectSyntaxJs :: Fn1 Foreign Foreign
 contentStateFromSelectSyntaxJs =
   let eitherF :: Foreign -> Either String ContentState
       eitherF f = do
-        selectSyntax <- lmap show (read f)
+        rawSelectSyntax <- lmap show (read f)
+        selectSyntax <- unrawSelectSyntax rawSelectSyntax
         contentStateFromSelectSyntax selectSyntax
       foreignF :: Foreign -> Foreign
       foreignF = either toForeign toForeign <<< eitherF
   in mkFn1 foreignF
 
-initForeign :: Foreign -> Foreign -> Foreign
-initForeign syntax rawSelection =
-  let allRead = Tuple <$> read syntax <*> read rawSelection
+rawOperateForeign :: Foreign -> Foreign -> Foreign
+rawOperateForeign selectSyntax action =
+  let allRead = Tuple <$> read selectSyntax <*> read action
 
-      rawInit :: Syntax
-              -> RawSelection
-              -> Either String ContentState
-      rawInit syntax rawSelection = do
-        selection <- rawSelectionToSelection rawSelection syntax
-        let yieldsContent = case selection of
-              SpanningSelection l r -> contentFromSyntax syntax (Just l) (Just r)
-              AtomicSelection x -> contentFromSyntax syntax (Just x) (Just x)
-            contentAndKeymapping = evalState yieldsContent 0
-            contentState = blockFromContent (fst contentAndKeymapping)
-        pure contentState
+      -- "raw" in the sense that it's operating on a raw selection
+      rawOperate :: RawSelectSyntax
+                 -> Action
+                 -> Either String SelectSyntax
+      rawOperate rawSelectSyntax action = do
+        selectSyntax <- unrawSelectSyntax rawSelectSyntax
+        operate selectSyntax action
+        -- TODO can probably get this from rawSelectionToSelection
+        -- let yieldsContent = case selection of
+        --       SpanningSelection l r -> contentFromSyntax syntax' (Just l) (Just r)
+        --       AtomicSelection x -> contentFromSyntax syntax' (Just x) (Just x)
+        --     contentAndKeymapping = evalState yieldsContent 0
+        -- pure (Tuple syntax contentState)
 
-      result :: Either String ContentState
+      result :: Either String SelectSyntax
       result = case allRead of
         Left err -> Left (show err)
-        Right (Tuple syntax' (WrappedRawSelection rawSelection')) ->
-          rawInit syntax' rawSelection'
+        Right (Tuple rawSelectSyntax action') ->
+          rawOperate rawSelectSyntax action'
+
   in case result of
        Left err -> toForeign err
        Right result' -> toForeign result'
 
-initJs :: Fn2 Foreign Foreign Foreign
-initJs = mkFn2 initForeign
+-- initForeign :: Foreign -> Foreign -> Foreign
+-- initForeign syntax rawSelection =
+--   let allRead = Tuple <$> read syntax <*> read rawSelection
+--
+--       rawInit :: Syntax
+--               -> RawSelection
+--               -> Either String ContentState
+--       rawInit syntax rawSelection = do
+--         selection <- rawSelectionToSelection rawSelection syntax
+--         let yieldsContent = case selection of
+--               SpanningSelection l r -> contentFromSyntax syntax (Just l) (Just r)
+--               AtomicSelection x -> contentFromSyntax syntax (Just x) (Just x)
+--             contentAndKeymapping = evalState yieldsContent 0
+--             contentState = blockFromContent (fst contentAndKeymapping)
+--         pure contentState
+--
+--       result :: Either String ContentState
+--       result = case allRead of
+--         Left err -> Left (show err)
+--         Right (Tuple syntax' (WrappedRawSelection rawSelection')) ->
+--           rawInit syntax' rawSelection'
+--   in case result of
+--        Left err -> toForeign err
+--        Right result' -> toForeign result'
