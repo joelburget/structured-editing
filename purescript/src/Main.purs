@@ -446,7 +446,7 @@ makePath syntax n = lmap
         Left consumed ->
           let offset' = offset - (consumed + 1)
           in if offset' < 3
-             then Right (PathOffset offset')
+             then Right (PathOffset (offset' + 1))
              else case consumePath right (offset' - 3) of
                     Right path -> Right (PathCons StepRight path)
                     Left consumed' ->
