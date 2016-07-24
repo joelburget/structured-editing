@@ -436,18 +436,14 @@ rawSelectionToSelection rawSelection syntax =
          <*> makePath syntax rawSelection.focusOffset
 
 unmakePath :: Syntax -> Path -> Either String Int
-unmakePath (SyntaxNum n) (PathOffset o) =
-  let nlen = length (show n)
-  in if o <= nlen
-     then Right o
-     else Left "unmakePath: offset too large for number"
+unmakePath (SyntaxNum n) (PathOffset o) = if o <= length (show n)
+  then Right o
+  else Left "unmakePath: offset too large for number"
 unmakePath (SyntaxNum _) (PathCons _ _) =
   Left "unmakePath: tried to go in to number"
-unmakePath (Hole name) (PathOffset o) =
-  let nlen = length name
-  in if o <= nlen
-     then Right o
-     else Left "unmakePath: offset too large for hole name"
+unmakePath (Hole name) (PathOffset o) = if o <= length name
+  then Right o
+  else Left "unmakePath: offset too large for hole name"
 unmakePath (Hole _) (PathCons _ _) =
   Left "unmakePath: tried to go in to hole"
 unmakePath (Plus l r) (PathOffset o) =
@@ -554,12 +550,6 @@ rawOperateForeign selectSyntax action =
         selectSyntax <- unrawSelectSyntax rawSelectSyntax
         ss <- operate selectSyntax action
         makeRawSelectSyntax ss
-        -- TODO can probably get this from rawSelectionToSelection
-        -- let yieldsContent = case selection of
-        --       SpanningSelection l r -> contentFromSyntax syntax' (Just l) (Just r)
-        --       AtomicSelection x -> contentFromSyntax syntax' (Just x) (Just x)
-        --     contentAndKeymapping = evalState yieldsContent 0
-        -- pure (Tuple syntax contentState)
 
       result :: Either String RawSelectSyntax
       result = case allRead of
