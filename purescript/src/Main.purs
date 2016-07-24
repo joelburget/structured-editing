@@ -17,10 +17,11 @@ import Data.Int as I
 import Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
-import Data.String (length, take, drop)
+import Data.String (length)
 import Data.String as String
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
+import Util.String (splice)
 
 
 data PathStep = StepLeft | StepRight
@@ -86,11 +87,6 @@ instance syntaxIsForeign :: IsForeign Syntax where
 
 isDigit :: Char -> Boolean
 isDigit x = x >= '0' && x <= '9'
-
-cToI :: Char -> Int
-cToI c = case I.fromString (String.singleton c) of
-  Just i -> i
-  Nothing -> 0
 
 type EntityRange =
   { offset :: Int
@@ -294,11 +290,13 @@ operateAtomic (Plus l r) path action = case path of
   _ -> Left "ran out of steps when operating on Plus"
 
 operateAtomic (Hole name) (PathOffset o) (Typing char)
-  | name == "" && isDigit char = Right (
-      SelectSyntax {
-        syntax: SyntaxNum (cToI char),
-        selection: AtomicSelection (PathOffset (o + 1))
-      })
+  | name == "" && isDigit char =
+      case I.fromString (String.singleton char) of
+        Just n -> Right (SelectSyntax
+          { syntax: SyntaxNum n
+          , selection: AtomicSelection (PathOffset (o + 1))
+          })
+        Nothing -> Left "insonsistency: unable to parse after inserting single digit"
   | name == "" && char == '(' = Right (
       SelectSyntax {
         syntax: Plus (Hole "l") (Hole "r"),
@@ -306,33 +304,38 @@ operateAtomic (Hole name) (PathOffset o) (Typing char)
       })
   | otherwise = Right (
       SelectSyntax {
-        syntax: Hole (name <> String.singleton char),
+        syntax: Hole (splice name o 0 (String.singleton char)),
         selection: AtomicSelection (PathOffset (o + 1))
       })
 operateAtomic (Hole name) (PathOffset o) Backspace
   | name == "" = Left "backspacing out of empty hole"
   | o > length name
   = Left "inconsistency: backspacing with cursor past end of hole"
-  | o == 0 = Left "backspacking out the left of a hole"
+  | o == 0 = Left "backspacing out the left of a hole"
   | otherwise
-  = let newName = take (o - 1) name <> drop o name
+  -- backspace goes left -- splice - 1!
+  = let newName = splice name (o - 1) 1 ""
     in Right (
       SelectSyntax {
         syntax: Hole newName,
         selection: AtomicSelection (PathOffset (o - 1))
       })
 operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
-  | isDigit char = Right (
-      SelectSyntax {
-        syntax: SyntaxNum (n * 10 + cToI char),
-        selection: AtomicSelection (PathOffset (o + 1))
-      })
+  | isDigit char =
+      case I.fromString (splice (show n) o 0 (String.singleton char)) of
+        Just newNum -> Right (SelectSyntax
+          { syntax: SyntaxNum newNum
+          , selection: AtomicSelection (PathOffset (o + 1))
+          })
+        Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
 operateAtomic (SyntaxNum n) (PathOffset o) Backspace
-  | n >= 10 = Right (
-      SelectSyntax {
-        syntax: SyntaxNum (n / 10),
-        selection: AtomicSelection (PathOffset (o - 1))
-      })
+  | n >= 10 = case I.fromString (splice (show n) (o - 1) 1 "") of
+      -- backspace goes left -- splice - 1!
+      Just newNum -> Right (SelectSyntax
+        { syntax: SyntaxNum newNum
+        , selection: AtomicSelection (PathOffset (o - 1))
+        })
+      Nothing -> Left "inconsistency: unable to parse after backspacing in number"
   | otherwise = Right (
       SelectSyntax {
         syntax: Hole "",
@@ -368,6 +371,10 @@ newtype SelectSyntax = SelectSyntax
   , syntax :: Syntax
   }
 
+derive instance genericSelectSyntax :: Generic SelectSyntax
+instance eqSelectSyntax :: Eq SelectSyntax where eq = gEq
+instance showSelectSyntax :: Show SelectSyntax where show = gShow
+
 -- type RawSelection = { anchor :: Path, focus :: Path }
 type RawSelection =
   { anchorKey :: String
@@ -389,12 +396,14 @@ newtype WrappedRawSelection = WrappedRawSelection -- RawSelection
   }
 
 derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
-instance foreignWrappedRawSelection  :: IsForeign WrappedRawSelection where
+instance foreignWrappedRawSelection :: IsForeign WrappedRawSelection where
   read = readGeneric myOptions
 
 data Selection
   = SpanningSelection Path Path
   | AtomicSelection Path
+
+derive instance genericSelection :: Generic Selection
 
 toPreEntityMap :: Map Int String -> PreEntityMap
 toPreEntityMap entityTypes =
