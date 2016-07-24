@@ -127,22 +127,22 @@ export default class AdditionEditor extends React.Component {
   }
 
   _onChange(command) {
-    const {syntax, anchor, focus} = this.props.selectSyntax;
-    const selection = {anchor, focus};
     const {
-      value0: newSyntax,
-      value1: newSelection,
-    } = operateJs(this.props.selectSyntax, command);
+      syntax,
+      anchor,
+      focus,
+    } = operateJs(this.state, command);
     // TODO don't set state and call back props
-    if (newSelection == null || newSelection == null) {
+    if (syntax == null || anchor == null || focus == null) {
       debugger;
     }
     this.setState({
-      syntax: newSyntax,
-      selection: newSelection,
+      syntax,
+      anchor,
+      focus,
     });
     this.props.onChange(
-      newSyntax,
+      syntax,
       command
     );
   }
@@ -156,7 +156,7 @@ export default class AdditionEditor extends React.Component {
   }
 
   _handleKeyCommand(command: string): boolean {
-    const {syntax} = this.props;
+    const {syntax} = this.state;
     switch (command) {
       // case 'additioneditor-number':
       // case 'additioneditor-openparen':

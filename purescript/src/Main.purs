@@ -70,6 +70,11 @@ data Syntax
   | Plus Syntax Syntax
   | Hole String
 
+syntaxToForeign :: Syntax -> Foreign
+syntaxToForeign (SNumber i) = toForeign {tag: "number", value: i}
+syntaxToForeign (Hole name) = toForeign {tag: "hole", name}
+syntaxToForeign (Plus l r) = toForeign {tag: "plus", l: syntaxToForeign l, r: syntaxToForeign r}
+
 instance syntaxIsForeign :: IsForeign Syntax where
   read obj = do
     tag <- readProp "tag" obj
@@ -390,6 +395,18 @@ unrawSelectSyntax rss@(RawSelectSyntax {anchor, focus, syntax}) = do
   selection <- rawSelectSyntaxToSelection rss
   pure (SelectSyntax ({syntax, selection}))
 
+makeRawSelectSyntax :: SelectSyntax -> Either String RawSelectSyntax
+makeRawSelectSyntax (SelectSyntax {syntax, selection}) =
+  case selection of
+       -- TODO mixing up the notions of anchor/focus and left/right
+    SpanningSelection lpath rpath -> do
+      anchor <- unmakePath syntax lpath
+      focus <- unmakePath syntax rpath
+      pure (RawSelectSyntax {anchor, focus, syntax})
+    AtomicSelection path -> do
+      i <- unmakePath syntax path
+      pure (RawSelectSyntax {anchor: i, focus: i, syntax})
+
 rawSelectSyntaxToSelection :: RawSelectSyntax -> Either String Selection
 rawSelectSyntaxToSelection (RawSelectSyntax {anchor, focus, syntax}) =
   let rawSelection =
@@ -407,6 +424,42 @@ rawSelectionToSelection rawSelection syntax =
   else SpanningSelection
          <$> makePath syntax rawSelection.anchorOffset
          <*> makePath syntax rawSelection.focusOffset
+
+unmakePath :: Syntax -> Path -> Either String Int
+unmakePath (SNumber n) (PathOffset o) =
+  let nlen = length (show n)
+  in if o <= nlen
+     then Right o
+     else Left "unmakePath: offset too large for number"
+unmakePath (SNumber _) (PathCons _ _) =
+  Left "unmakePath: tried to go in to number"
+unmakePath (Hole name) (PathOffset o) =
+  let nlen = length name
+  in if o <= nlen
+     then Right o
+     else Left "unmakePath: offset too large for hole name"
+unmakePath (Hole _) (PathCons _ _) =
+  Left "unmakePath: tried to go in to hole"
+unmakePath (Plus l r) (PathOffset o) =
+  if o == 0
+    then Right 0
+    else if o <= 3
+      then Right (syntaxSize l + o)
+      else if o <= 5
+        then Right (syntaxSize l + syntaxSize r + o)
+        else Left "unmakePath: offste too large for plus"
+unmakePath (Plus l r) (PathCons dir rest) =
+  if dir == StepLeft
+    then (1 + _) <$> unmakePath l rest
+    -- else (4 + (syntaxSize l + _)) <$> unmakePath r rest
+    else do
+      i <- unmakePath r rest
+      pure (4 + syntaxSize l + i)
+
+syntaxSize :: Syntax -> Int
+syntaxSize (SNumber n) = length (show n)
+syntaxSize (Hole name) = length name
+syntaxSize (Plus l r) = 5 + syntaxSize l + syntaxSize r
 
 makePath :: Syntax -> Int -> Either String Path
 makePath syntax n = lmap
@@ -503,10 +556,11 @@ rawOperateForeign selectSyntax action =
       -- "raw" in the sense that it's operating on a raw selection
       rawOperate :: RawSelectSyntax
                  -> Action
-                 -> Either String SelectSyntax
+                 -> Either String RawSelectSyntax
       rawOperate rawSelectSyntax action = do
         selectSyntax <- unrawSelectSyntax rawSelectSyntax
-        operate selectSyntax action
+        ss <- operate selectSyntax action
+        makeRawSelectSyntax ss
         -- TODO can probably get this from rawSelectionToSelection
         -- let yieldsContent = case selection of
         --       SpanningSelection l r -> contentFromSyntax syntax' (Just l) (Just r)
@@ -514,7 +568,7 @@ rawOperateForeign selectSyntax action =
         --     contentAndKeymapping = evalState yieldsContent 0
         -- pure (Tuple syntax contentState)
 
-      result :: Either String SelectSyntax
+      result :: Either String RawSelectSyntax
       result = case allRead of
         Left err -> Left (show err)
         Right (Tuple rawSelectSyntax action') ->
@@ -522,7 +576,9 @@ rawOperateForeign selectSyntax action =
 
   in case result of
        Left err -> toForeign err
-       Right result' -> toForeign result'
+       Right (RawSelectSyntax {anchor, focus, syntax}) ->
+       -- take care to serialize in the object-ey, not classy way
+         toForeign {anchor, focus, syntax: syntaxToForeign syntax}
 
 -- initForeign :: Foreign -> Foreign -> Foreign
 -- initForeign syntax rawSelection =
