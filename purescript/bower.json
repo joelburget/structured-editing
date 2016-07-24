@@ -18,7 +18,8 @@
     "purescript-maps": "~1.1.0",
     "purescript-generics": "~1.0.1",
     "purescript-test-unit": "~7.0.0",
-    "purescript-foreign-generic": "~1.0.0"
+    "purescript-foreign-generic": "~1.0.0",
+    "purescript-lists": "~1.0.1"
   },
   "resolutions": {
     "purescript-bifunctors": "^1.0.0",

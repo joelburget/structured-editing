@@ -23,6 +23,7 @@ import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
 
 import Path (Path(..), PathStep(..), subPath, getOffset)
+import Syntax (Syntax(..), mkForeign)
 import Util.String (isDigit, splice, whenJust)
 
 
@@ -50,30 +51,6 @@ instance actionIsForeign :: IsForeign Action where
       "backspace" -> pure Backspace
       _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
-data Syntax
-  = SyntaxNum Int
-  | Plus Syntax Syntax
-  | Hole String
-
-derive instance genericSyntax :: Generic Syntax
-instance showSyntax :: Show Syntax where show = gShow
-
-class MkForeign a where
-  mkForeign :: a -> Foreign
-
-instance syntaxMkForeign :: MkForeign Syntax where
-  mkForeign (SyntaxNum i) = toForeign {tag: "number", value: i}
-  mkForeign (Hole name) = toForeign {tag: "hole", name}
-  mkForeign (Plus l r) = toForeign {tag: "plus", l: mkForeign l, r: mkForeign r}
-
-instance syntaxIsForeign :: IsForeign Syntax where
-  read obj = do
-    tag <- readProp "tag" obj
-    case tag of
-      "number" -> SyntaxNum <$> readProp "value" obj
-      "plus" -> Plus <$> readProp "l" obj <*> readProp "r" obj
-      "hole" -> Hole <$> readProp "name" obj
-      _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
 type EntityRange =
   { offset :: Int

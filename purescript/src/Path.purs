@@ -6,6 +6,10 @@ import Data.Maybe (Maybe(Just, Nothing))
 
 data PathStep = StepLeft | StepRight
 
+toggle :: PathStep -> PathStep
+toggle StepLeft = StepRight
+toggle StepRight = StepLeft
+
 derive instance genericPathStep :: Generic PathStep
 instance showPathStep :: Show PathStep where show = gShow
 instance eqPathStep :: Eq PathStep where eq = gEq
