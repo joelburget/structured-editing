@@ -10,6 +10,7 @@ import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
+import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Generic
 import Data.Int as I
@@ -39,6 +40,18 @@ instance eqPath :: Eq Path where eq = gEq
 data Action
   = Backspace
   | Typing Char
+
+myOptions :: Options
+myOptions = defaultOptions
+  { sumEncoding = TaggedObject { tagFieldName: "tag", contentsFieldName: "value" }
+  , unwrapNewtypes = true
+  }
+
+derive instance genericAction :: Generic Action
+
+-- "expected one of ["Main.Backspace","Main.Typing"]"
+-- instance foreignAction :: IsForeign Action where
+--   read = readGeneric myOptions
 
 instance actionIsForeign :: IsForeign Action where
   read obj = do
@@ -323,13 +336,29 @@ operateAtomic (SyntaxNum n) (PathOffset o) Backspace
 
 operateAtomic _ _ _ = Left "had steps remaining at a leaf"
 
-data RawSelectSyntax = RawSelectSyntax
+newtype RawSelectSyntax = RawSelectSyntax
   { anchor :: Int
   , focus :: Int
   , syntax :: Syntax
   }
 
-data SelectSyntax = SelectSyntax
+-- derive instance genericRawSelectSyntax :: Generic RawSelectSyntax
+-- instance foreignRawSelectSyntax :: IsForeign RawSelectSyntax where
+--   read = readGeneric myOptions
+
+instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
+  read obj = do
+    anchor <- readProp "anchor" obj
+    focus <- readProp "focus" obj
+    syntax <- readProp "syntax" obj
+    pure (RawSelectSyntax
+      { anchor: anchor
+      , focus: focus
+      , syntax: syntax
+      }
+      )
+
+newtype SelectSyntax = SelectSyntax
   { selection :: Selection
   , syntax :: Syntax
   }
@@ -345,21 +374,18 @@ type RawSelection =
   -- , hasFocus: Boolean
   }
 
-newtype WrappedRawSelection = WrappedRawSelection RawSelection
+-- generic deriving fails on `WrappedRawSelection RawSelection`. Inline the
+-- record instead.
+newtype WrappedRawSelection = WrappedRawSelection -- RawSelection
+  { anchorKey :: String
+  , anchorOffset :: Int
+  , focusKey :: String
+  , focusOffset :: Int
+  }
 
-instance rawSelectionIsForeign :: IsForeign WrappedRawSelection where
-  read obj = do
-    anchorKey <- readProp "anchorKey" obj
-    anchorOffset <- readProp "anchorOffset" obj
-    focusKey <- readProp "focusKey" obj
-    focusOffset <- readProp "focusOffset" obj
-    pure (WrappedRawSelection
-      { anchorKey: anchorKey
-      , anchorOffset: anchorOffset
-      , focusKey: focusKey
-      , focusOffset: focusOffset
-      }
-      )
+derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
+instance foreignWrappedRawSelection  :: IsForeign WrappedRawSelection where
+  read = readGeneric myOptions
 
 data Selection
   = SpanningSelection Path Path
@@ -491,18 +517,6 @@ operate :: SelectSyntax -> Action -> Either String SelectSyntax
 operate (SelectSyntax {selection, syntax}) action = case selection of
   AtomicSelection path -> operateAtomic syntax path action
   SpanningSelection p1 p2 -> Left "spanning actions not yet implemented"
-
-instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
-  read obj = do
-    anchor <- readProp "anchor" obj
-    focus <- readProp "focus" obj
-    syntax <- readProp "syntax" obj
-    pure (RawSelectSyntax
-      { anchor: anchor
-      , focus: focus
-      , syntax: syntax
-      }
-      )
 
 contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
 contentStateFromSelectSyntax (SelectSyntax rec) = do
