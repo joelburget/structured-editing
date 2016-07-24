@@ -112,43 +112,18 @@ const defaultSelection = {
   focusOffset: 0,
 };
 
-export default class AdditionEditor extends React.Component {
+export class AdditionEditor extends React.Component {
   constructor(props) {
     super(props);
 
-    this.state = props.selectSyntax;
-    // Object.assign({}, defaultSelection, props.selectSyntax.selection),
-
-    this.onChange = command => this._onChange(command);
     this.handleKeyCommand = command => this._handleKeyCommand(command);
     this.handleBeforeInput = chars => this._handleBeforeInput(chars);
     this.handleRawChange = editorState => this._handleRawChange(editorState);
     this.focus = () => this.editor.focus();
   }
 
-  _onChange(command) {
-    const {
-      syntax,
-      anchor,
-      focus,
-    } = operateJs(this.state, command);
-    // TODO don't set state and call back props
-    if (syntax == null || anchor == null || focus == null) {
-      debugger;
-    }
-    this.setState({
-      syntax,
-      anchor,
-      focus,
-    });
-    this.props.onChange(
-      syntax,
-      command
-    );
-  }
-
   _handleBeforeInput(chars: string): boolean {
-    this.onChange({
+    this.props.onChange({
       tag: 'typing',
       value: chars,
     });
@@ -156,13 +131,13 @@ export default class AdditionEditor extends React.Component {
   }
 
   _handleKeyCommand(command: string): boolean {
-    const {syntax} = this.state;
+    // const {syntax} = this.props;
     switch (command) {
       // case 'additioneditor-number':
       // case 'additioneditor-openparen':
       // case 'additioneditor-plus':
       case 'additioneditor-backspace':
-        this.onChange({tag: 'backspace'});
+        this.props.onChange({tag: 'backspace'});
         return true;
 
       default:
@@ -181,24 +156,22 @@ export default class AdditionEditor extends React.Component {
     const {
       anchor: oldAnchor,
       focus: oldFocus,
-    } = this.state;
-    console.log(anchor , oldAnchor , focus , oldFocus);
+    } = this.props.selectSyntax;
     if (anchor !== oldAnchor || focus !== oldFocus) {
-      this.setState({anchor, focus});
+      this.props.onMoveCursor({anchor, focus});
     } else {
       console.log('unhandled raw onChange', editorState.toJS());
     }
   }
 
   render() {
-    const x =  contentStateFromSelectSyntaxJs(this.state);
     const {
       block,
       selection: {
         anchorOffset, anchorKey,
         focusOffset, focusKey,
       },
-    } = x;
+    } = contentStateFromSelectSyntaxJs(this.props.selectSyntax);
     const contentState = convertFromRaw({
       blocks: [Object.assign({}, block, {type: 'unstyled'})],
       entityMap: {},
@@ -224,6 +197,60 @@ export default class AdditionEditor extends React.Component {
           keyBindingFn={additionKeyBindingFn}
           onChange={this.handleRawChange}
         />
+      </div>
+    );
+  }
+}
+
+export class StatefulAdditionEditor extends React.Component {
+  constructor({onChange, selectSyntax}) {
+    super();
+
+    this.state = {
+      selectSyntax,
+      lastWarning: null,
+    };
+
+    this.onChange = command => this._onChange(command);
+    this.handleMoveCursor = anchorFocus => this._handleMoveCursor(anchorFocus);
+  }
+
+  _onChange(command) {
+    const result = operateJs(this.state.selectSyntax, command);
+    if (typeof result === 'string') {
+      this.setState({lastWarning: result});
+    } else {
+      this.setState({
+        selectSyntax: result,
+        lastWarning: null,
+      });
+      this.props.onChange(
+        result.syntax,
+        command
+      );
+    }
+  }
+
+  _handleMoveCursor(anchorFocus) {
+    const selectSyntax = Object.assign({}, this.state.selectSyntax, anchorFocus);
+    this.setState({selectSyntax});
+  }
+
+  componentDidMount() {
+    this.editor.focus();
+  }
+
+  render() {
+    const {selectSyntax, lastWarning} = this.state;
+    return (
+      <div>
+        <AdditionEditor
+          onChange={this.onChange}
+          onMoveCursor={this.handleMoveCursor}
+          selectSyntax={selectSyntax}
+          ref={ref => this.editor = ref}
+        />
+        {lastWarning && <h2>{lastWarning}</h2>}
       </div>
     );
   }
