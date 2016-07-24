@@ -1,7 +1,7 @@
 module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> (Syntax, ContentState)`
 
-import Prelude (otherwise, (/), (<), (>), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show, (<<<), flip, map)
+import Prelude
 
 import Control.Monad.State (State, modify, get, evalState)
 import Data.Array ((:), concat, snoc, (..))
@@ -291,6 +291,11 @@ operateAtomic (Hole name) (PathOffset o) Backspace
         selection: AtomicSelection (PathOffset (o - 1))
       })
 operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
+  | char == '-' && o == 0
+  = Right (SelectSyntax
+      { syntax: SyntaxNum (-n)
+      , selection: AtomicSelection (PathOffset (o + 1))
+      })
   | isDigit char =
       case I.fromString (splice (show n) o 0 (String.singleton char)) of
         Just newNum -> Right (SelectSyntax
@@ -299,7 +304,7 @@ operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
           })
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
 operateAtomic (SyntaxNum n) (PathOffset o) Backspace
-  | n >= 10 = case I.fromString (splice (show n) (o - 1) 1 "") of
+  | n >= 10 || n < 0 = case I.fromString (splice (show n) (o - 1) 1 "") of
       -- backspace goes left -- splice - 1!
       Just newNum -> Right (SelectSyntax
         { syntax: SyntaxNum newNum

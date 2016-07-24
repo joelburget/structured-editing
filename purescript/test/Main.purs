@@ -10,6 +10,7 @@ import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
 
 import Main
+import Path
 
 
 onePlusOne :: Syntax
@@ -106,5 +107,14 @@ main = runTest do
         (Right (SelectSyntax
           { selection: AtomicSelection (PathOffset 1)
           , syntax: SyntaxNum 134
+          }
+        ))
+
+    test "backspacing negative number" do
+      Assert.equal
+        (operateAtomic (SyntaxNum (-1)) (PathOffset 1) Backspace)
+        (Right (SelectSyntax
+          { selection: AtomicSelection (PathOffset 0)
+          , syntax: SyntaxNum 1
           }
         ))
