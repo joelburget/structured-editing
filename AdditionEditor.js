@@ -58,12 +58,12 @@ const components = {
     return <span>{children}</span>;
   },
   number: ({children}) => {
-    return <span style={{backgroundColor: 'rgba(0, 0, 255, 0.09)'}}>{children}</span>
+    return <span style={styles.number}>{children}</span>
   },
   hole: ({children}) => (
     // TODO
     // {React.Children.only(children)}
-    <span style={{backgroundColor: 'rgba(255, 0, 0, 0.09)'}}>{children}</span>
+    <span style={styles.hole}>{children}</span>
   ),
 };
 
@@ -255,14 +255,14 @@ export class StatefulAdditionEditor extends React.Component {
   render() {
     const {selectSyntax, lastWarning} = this.state;
     return (
-      <div>
+      <div style={styles.root}>
         <AdditionEditor
           onChange={this.onChange}
           onMoveCursor={this.handleMoveCursor}
           selectSyntax={selectSyntax}
           ref={ref => this.editor = ref}
         />
-        {lastWarning && <h2>{lastWarning}</h2>}
+        {lastWarning && <h2 style={styles.err}>{lastWarning}</h2>}
       </div>
     );
   }
@@ -271,5 +271,14 @@ export class StatefulAdditionEditor extends React.Component {
 const styles = {
   root: {
     fontFamily: 'monospace',
+  },
+  err: {
+    borderBottom: '3px solid rgba(255, 112, 0, 0.43)',
+  },
+  number: {
+    backgroundColor: 'rgba(0, 0, 255, 0.09)',
+  },
+  hole: {
+    backgroundColor: 'rgba(255, 0, 0, 0.09)',
   },
 };
