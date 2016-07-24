@@ -190,10 +190,6 @@ export default class AdditionEditor extends React.Component {
     }
   }
 
-// contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
-// init :: Syntax -> RawSelection -> Either String ContentState
-// operate :: Syntax -> RawSelection -> Action -> Either String (Tuple Syntax ContentState)
-
   render() {
     const x =  contentStateFromSelectSyntaxJs(this.state);
     const {

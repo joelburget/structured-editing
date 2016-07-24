@@ -579,28 +579,3 @@ rawOperateForeign selectSyntax action =
        Right (RawSelectSyntax {anchor, focus, syntax}) ->
        -- take care to serialize in the object-ey, not classy way
          toForeign {anchor, focus, syntax: syntaxToForeign syntax}
-
--- initForeign :: Foreign -> Foreign -> Foreign
--- initForeign syntax rawSelection =
---   let allRead = Tuple <$> read syntax <*> read rawSelection
---
---       rawInit :: Syntax
---               -> RawSelection
---               -> Either String ContentState
---       rawInit syntax rawSelection = do
---         selection <- rawSelectionToSelection rawSelection syntax
---         let yieldsContent = case selection of
---               SpanningSelection l r -> contentFromSyntax syntax (Just l) (Just r)
---               AtomicSelection x -> contentFromSyntax syntax (Just x) (Just x)
---             contentAndKeymapping = evalState yieldsContent 0
---             contentState = blockFromContent (fst contentAndKeymapping)
---         pure contentState
---
---       result :: Either String ContentState
---       result = case allRead of
---         Left err -> Left (show err)
---         Right (Tuple syntax' (WrappedRawSelection rawSelection')) ->
---           rawInit syntax' rawSelection'
---   in case result of
---        Left err -> toForeign err
---        Right result' -> toForeign result'
