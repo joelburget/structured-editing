@@ -11,6 +11,7 @@ import Data.Foldable (foldl)
 import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
+import Data.Generic
 import Data.Int as I
 import Data.Map as Map
 import Data.Map (Map)
@@ -22,29 +23,17 @@ import Data.Tuple (Tuple(Tuple), fst)
 
 data PathStep = StepLeft | StepRight
 
-instance pathStepIsEq :: Eq PathStep where
-  eq StepLeft StepLeft = true
-  eq StepRight StepRight = true
-  eq _ _ = false
-
-instance pathStepIsShow :: Show PathStep where
-  show StepLeft = "StepLeft"
-  show StepRight = "StepRight"
+derive instance genericPathStep :: Generic PathStep
+instance showPathStep :: Show PathStep where show = gShow
+instance eqPathStep :: Eq PathStep where eq = gEq
 
 data Path
   = PathOffset Int
   | PathCons PathStep Path
 
-
-instance pathIsEq :: Eq Path where
-  eq (PathOffset i) (PathOffset j) = i == j
-  eq (PathCons s1 p1) (PathCons s2 p2) = s1 == s2 && p1 == p2
-  eq _ _ = false
-
-
-instance pathIsShow :: Show Path where
-  show (PathOffset i) = "(PathOffset " <> show i <> ")"
-  show (PathCons s p) = "(PathCons " <> show s <> " " <> show p <> ")"
+derive instance genericPath :: Generic Path
+instance showPath :: Show Path where show = gShow
+instance eqPath :: Eq Path where eq = gEq
 
 
 data Action
@@ -60,12 +49,15 @@ instance actionIsForeign :: IsForeign Action where
       _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
 data Syntax
-  = SNumber Int
+  = SyntaxNum Int
   | Plus Syntax Syntax
   | Hole String
 
+derive instance genericSyntax :: Generic Syntax
+instance showSyntax :: Show Syntax where show = gShow
+
 syntaxToForeign :: Syntax -> Foreign
-syntaxToForeign (SNumber i) = toForeign {tag: "number", value: i}
+syntaxToForeign (SyntaxNum i) = toForeign {tag: "number", value: i}
 syntaxToForeign (Hole name) = toForeign {tag: "hole", name}
 syntaxToForeign (Plus l r) = toForeign {tag: "plus", l: syntaxToForeign l, r: syntaxToForeign r}
 
@@ -73,15 +65,10 @@ instance syntaxIsForeign :: IsForeign Syntax where
   read obj = do
     tag <- readProp "tag" obj
     case tag of
-      "number" -> SNumber <$> readProp "value" obj
+      "number" -> SyntaxNum <$> readProp "value" obj
       "plus" -> Plus <$> readProp "l" obj <*> readProp "r" obj
       "hole" -> Hole <$> readProp "name" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
-
-instance syntaxIsShow :: Show Syntax where
-  show (SNumber i) = "(SNumber " <> show i <> ")"
-  show (Plus l r) = "(Plus " <> show l <> " " <> show r <> ")"
-  show (Hole str) = "(Hole " <> str <> ")"
 
 isDigit :: Char -> Boolean
 isDigit x = x >= '0' && x <= '9'
@@ -251,7 +238,7 @@ contentFromSyntax syntax anchor focus = do
             (Map.union ((StepLeft:_) <$> m1) ((StepRight:_) <$> m2))
       pure (Tuple arr mergedMap)
 
-    SNumber n ->
+    SyntaxNum n ->
       let text = show n
           arr = [
             InlineNumber myId text (inlineSelection 0 (length text) anchorOffset focusOffset)
@@ -291,7 +278,7 @@ operateAtomic (Plus l r) path action = case path of
 operateAtomic (Hole name) (PathOffset o) (Typing char)
   | name == "" && isDigit char = Right (
       SelectSyntax {
-        syntax: SNumber (cToI char),
+        syntax: SyntaxNum (cToI char),
         selection: AtomicSelection (PathOffset (o + 1))
       })
   | name == "" && char == '(' = Right (
@@ -316,16 +303,16 @@ operateAtomic (Hole name) (PathOffset o) Backspace
         syntax: Hole newName,
         selection: AtomicSelection (PathOffset (o - 1))
       })
-operateAtomic (SNumber n) (PathOffset o) (Typing char)
+operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
   | isDigit char = Right (
       SelectSyntax {
-        syntax: SNumber (n * 10 + cToI char),
+        syntax: SyntaxNum (n * 10 + cToI char),
         selection: AtomicSelection (PathOffset (o + 1))
       })
-operateAtomic (SNumber n) (PathOffset o) Backspace
+operateAtomic (SyntaxNum n) (PathOffset o) Backspace
   | n >= 10 = Right (
       SelectSyntax {
-        syntax: SNumber (n / 10),
+        syntax: SyntaxNum (n / 10),
         selection: AtomicSelection (PathOffset (o - 1))
       })
   | otherwise = Right (
@@ -420,12 +407,12 @@ rawSelectionToSelection rawSelection syntax =
          <*> makePath syntax rawSelection.focusOffset
 
 unmakePath :: Syntax -> Path -> Either String Int
-unmakePath (SNumber n) (PathOffset o) =
+unmakePath (SyntaxNum n) (PathOffset o) =
   let nlen = length (show n)
   in if o <= nlen
      then Right o
      else Left "unmakePath: offset too large for number"
-unmakePath (SNumber _) (PathCons _ _) =
+unmakePath (SyntaxNum _) (PathCons _ _) =
   Left "unmakePath: tried to go in to number"
 unmakePath (Hole name) (PathOffset o) =
   let nlen = length name
@@ -451,7 +438,7 @@ unmakePath (Plus l r) (PathCons dir rest) =
       pure (4 + syntaxSize l + i)
 
 syntaxSize :: Syntax -> Int
-syntaxSize (SNumber n) = length (show n)
+syntaxSize (SyntaxNum n) = length (show n)
 syntaxSize (Hole name) = length name
 syntaxSize (Plus l r) = 5 + syntaxSize l + syntaxSize r
 
@@ -466,7 +453,7 @@ makePath syntax n = lmap
     -- consumed
     consumePath :: Syntax -> Int -> Either Int Path
     consumePath _ 0 = Right (PathOffset 0)
-    consumePath (SNumber n) offset =
+    consumePath (SyntaxNum n) offset =
       let nlen = length (show n)
       in if offset <= nlen
          then Right (PathOffset offset)
