@@ -3,7 +3,7 @@ module Main where
 
 import Prelude
 
-import Control.Monad.State (State, modify, get, evalState)
+import Control.Monad.State (State, modify, get, evalState, execState)
 import Data.Array ((:), concat, snoc, (..))
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either)
@@ -23,7 +23,7 @@ import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
 
 import Path (Path(..), PathStep(..), subPath, getOffset)
-import Util.String (isDigit, splice)
+import Util.String (isDigit, splice, whenJust)
 
 
 data Action
@@ -147,23 +147,20 @@ blockFromContent inlines =
 
       accumAnchorFocus :: InlineInfo -> BFromCState -> BFromCState
       accumAnchorFocus info state =
-        -- TODO use state monad:
-        -- whenJust info.anchor $ \i ->
-        --   anchorOffset .=
+        -- TODO use lens
+        -- whenJust info.anchor \i ->
+        --   anchorOffset %=
         --   anchorKey .=
-        let state' = case info.anchor of
-              Just i -> state
+        let go = do
+              whenJust info.anchor \i -> modify \st -> st
                 { anchorOffset = state.currentOffset + i
                 , anchorKey = blockKey
                 }
-              Nothing -> state
-            state'' = case info.focus of
-              Just i -> state'
-                { focusOffset = state'.currentOffset + i
+              whenJust info.focus \i -> modify \st -> st
+                { focusOffset = state.currentOffset + i
                 , focusKey = blockKey
                 }
-              Nothing -> state'
-        in state''
+        in execState go state
 
       finalState = foldl accum initialState inlines
   in { block: { key: BlockKey blockKey
