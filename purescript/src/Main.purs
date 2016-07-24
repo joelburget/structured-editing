@@ -18,9 +18,7 @@ import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length, take, drop)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple), fst)
-import Tuple3 (Tuple3(..))
 
-import Debug.Trace (traceShow)
 
 data PathStep = StepLeft | StepRight
 
@@ -463,11 +461,6 @@ makePath syntax n = lmap
     show n <> " demanded, " <> show c <> " consumed")
   (consumePath syntax n)
   where
-    consumePath' :: Syntax -> Int -> Either Int Path
-    consumePath' s i =
-      let result = consumePath s i
-      in traceShow (Tuple3 s i result) \_ -> result
-
     -- keep moving in to the outermost syntax holding this offset
     -- either give back the resulting path or the number of chars
     -- consumed

@@ -75,6 +75,7 @@ const DataDecorator = {
   getComponentForKey(key: string): Function {
     const entity = Entity.get(key);
     const tyName = entity.data.type;
+    console.log('here');
     return components[tyName];
   },
 
