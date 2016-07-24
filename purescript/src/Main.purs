@@ -26,17 +26,17 @@ import Path (Path(..), PathStep(..), subPath, getOffset)
 import Util.String (isDigit, splice, whenJust)
 
 
-data Action
-  = Backspace
-  | Typing Char
-
 myOptions :: Options
 myOptions = defaultOptions
   { sumEncoding = TaggedObject { tagFieldName: "tag", contentsFieldName: "value" }
   , unwrapNewtypes = true
   }
 
-derive instance genericAction :: Generic Action
+data Action
+  = Backspace
+  | Typing Char
+
+-- derive instance genericAction :: Generic Action
 
 -- "expected one of ["Main.Backspace","Main.Typing"]"
 -- instance foreignAction :: IsForeign Action where
@@ -58,10 +58,13 @@ data Syntax
 derive instance genericSyntax :: Generic Syntax
 instance showSyntax :: Show Syntax where show = gShow
 
-syntaxToForeign :: Syntax -> Foreign
-syntaxToForeign (SyntaxNum i) = toForeign {tag: "number", value: i}
-syntaxToForeign (Hole name) = toForeign {tag: "hole", name}
-syntaxToForeign (Plus l r) = toForeign {tag: "plus", l: syntaxToForeign l, r: syntaxToForeign r}
+class MkForeign a where
+  mkForeign :: a -> Foreign
+
+instance syntaxMkForeign :: MkForeign Syntax where
+  mkForeign (SyntaxNum i) = toForeign {tag: "number", value: i}
+  mkForeign (Hole name) = toForeign {tag: "hole", name}
+  mkForeign (Plus l r) = toForeign {tag: "plus", l: mkForeign l, r: mkForeign r}
 
 instance syntaxIsForeign :: IsForeign Syntax where
   read obj = do
@@ -558,4 +561,4 @@ rawOperateForeign selectSyntax action =
        Left err -> toForeign err
        Right (RawSelectSyntax {anchor, focus, syntax}) ->
        -- take care to serialize in the object-ey, not classy way
-         toForeign {anchor, focus, syntax: syntaxToForeign syntax}
+         toForeign {anchor, focus, syntax: mkForeign syntax}
