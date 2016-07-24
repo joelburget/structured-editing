@@ -18,13 +18,9 @@ import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length, take, drop)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple), fst)
+import Tuple3 (Tuple3(..))
 
-import Debug.Trace
-
-data Tuple3 a b c = Tuple3 a b c
-
-instance showTuple3 :: (Show a, Show b, Show c) => Show (Tuple3 a b c) where
-  show (Tuple3 a b c) = "(Tuple3 " <> show a <> " " <> show b <> " " <> show c <> ")"
+import Debug.Trace (traceShow)
 
 data PathStep = StepLeft | StepRight
 
