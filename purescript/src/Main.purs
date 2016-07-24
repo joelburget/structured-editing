@@ -1,10 +1,10 @@
 module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> (Syntax, ContentState)`
 
-import Prelude (otherwise, (/), (<), (>), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show, (<<<))
+import Prelude (otherwise, (/), (<), (>), (>=), (+), (-), (*), (<>), (==), (&&), pure, (<*>), (<$>), (<=), bind, show, class Eq, class Show, (<<<), flip, map)
 
 import Control.Monad.State (State, modify, get, evalState)
-import Data.Array ((:), concat, snoc)
+import Data.Array ((:), concat, snoc, (..))
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
@@ -19,6 +19,7 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length, take, drop)
 import Data.String as String
+import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
 
 
@@ -127,38 +128,41 @@ type BFromCState =
   , focusOffset :: Int
   , text :: String
   , entityRanges :: Array EntityRange
+  , preEntityMap :: Map Int String
   }
 
 blockFromContent :: Array LightInline -> ContentState
 blockFromContent inlines =
   let initialState =
         { currentOffset: 0
-        , text: ""
-        , entityRanges: []
         , anchorKey: blockKey
         , anchorOffset: 0
         , focusKey: blockKey
         , focusOffset: 0
+        , text: ""
+        , entityRanges: []
+        , preEntityMap: Map.empty
         }
 
       accum :: BFromCState -> LightInline -> BFromCState
-      accum state (InlinePlus i str info) = accumText i str (accumAnchorFocus info state)
-      accum state (InlineNumber i str info) = accumText i str (accumAnchorFocus info state)
-      accum state (InlineHole i str info) = accumText i str (accumAnchorFocus info state)
+      accum state (InlinePlus i str info) = accumText i "plus" str (accumAnchorFocus info state)
+      accum state (InlineNumber i str info) = accumText i "number" str (accumAnchorFocus info state)
+      accum state (InlineHole i str info) = accumText i "hole" str (accumAnchorFocus info state)
 
       -- For each LightInline, add its text to the current state
-      accumText :: Int -> String -> BFromCState -> BFromCState
-      accumText key str state =
-        let tLen = length state.text
+      accumText :: Int -> String -> String -> BFromCState -> BFromCState
+      accumText key entityType str state =
+        let offset = length state.text
             sLen = length str
         in state
              { currentOffset = state.currentOffset + sLen
              , text = state.text <> str
              , entityRanges = snoc state.entityRanges
-               { offset: tLen
+               { offset
                , length: sLen
-               , key: key
+               , key
                }
+             , preEntityMap = Map.insert key entityType state.preEntityMap
              }
 
       accumAnchorFocus :: InlineInfo -> BFromCState -> BFromCState
@@ -191,6 +195,7 @@ blockFromContent inlines =
                   , focusKey: finalState.focusKey
                   , focusOffset: finalState.focusOffset
                   }
+     , preEntityMap: toPreEntityMap finalState.preEntityMap
      }
 
 getOffset :: Maybe Path -> Maybe Int
@@ -391,10 +396,20 @@ data Selection
   = SpanningSelection Path Path
   | AtomicSelection Path
 
+toPreEntityMap :: Map Int String -> PreEntityMap
+toPreEntityMap entityTypes =
+  let len = Map.size entityTypes
+      lookups = flip map (0 .. (len - 1)) \ix -> Map.lookup ix entityTypes
+  in PreEntityMap (sequence lookups)
+
+newtype PreEntityMap = PreEntityMap (Maybe (Array String))
+
+
 type ContentState =
   { block :: RawDraftContentBlock
   -- TODO understand selectionBefore / selectionAfter
   , selection :: RawSelection
+  , preEntityMap :: PreEntityMap
   }
 
 unrawSelectSyntax :: RawSelectSyntax -> Either String SelectSyntax

@@ -33,11 +33,16 @@ const {hasCommandModifier} = KeyBindingUtil;
 // Conflicts are going to be very important! They're where propagation stops.
 // Are they different from holes?
 
-const entityMap = {
+const entityTypes = {
   number: {
     type: 'TOKEN',
     mutability: 'MUTABLE',
     data: {type: 'number'},
+  },
+  hole: {
+    type: 'TOKEN',
+    mutability: 'MUTABLE',
+    data: {type: 'hole'},
   },
   plus: {
     type: 'TOKEN',
@@ -53,10 +58,12 @@ const components = {
     return <span>{children}</span>;
   },
   number: ({children}) => {
-    return <span>{children}</span>
+    return <span style={{backgroundColor: 'rgba(0, 0, 255, 0.09)'}}>{children}</span>
   },
   hole: ({children}) => (
-    <span>({React.Children.only(children)})</span>
+    // TODO
+    // {React.Children.only(children)}
+    <span style={{backgroundColor: 'rgba(255, 0, 0, 0.09)'}}>{children}</span>
   ),
 };
 
@@ -75,7 +82,6 @@ const DataDecorator = {
   getComponentForKey(key: string): Function {
     const entity = Entity.get(key);
     const tyName = entity.data.type;
-    console.log('here');
     return components[tyName];
   },
 
@@ -172,14 +178,19 @@ export class AdditionEditor extends React.Component {
         anchorOffset, anchorKey,
         focusOffset, focusKey,
       },
+      preEntityMap,
     } = contentStateFromSelectSyntaxJs(this.props.selectSyntax);
+
+    const entityMap = {};
+    preEntityMap.value0.forEach((val, ix) => {
+      entityMap[ix] = entityTypes[val];
+    });
     const contentState = convertFromRaw({
       blocks: [Object.assign({}, block, {type: 'unstyled'})],
-      entityMap: {},
+      entityMap,
     });
     let editorState = EditorState.createWithContent(
-      contentState
-      /*, DataDecorator*/
+      contentState, DataDecorator
     );
     const selectionState = editorState.getSelection().merge({
       focusKey, focusOffset,
