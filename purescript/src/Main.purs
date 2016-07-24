@@ -193,29 +193,6 @@ contentFromSyntax syntax anchor focus = do
       in pure (Tuple arr (Map.singleton myId []))
 
 
-
-newtype RawSelectSyntax = RawSelectSyntax
-  { anchor :: Int
-  , focus :: Int
-  , syntax :: Syntax
-  }
-
--- derive instance genericRawSelectSyntax :: Generic RawSelectSyntax
--- instance foreignRawSelectSyntax :: IsForeign RawSelectSyntax where
---   read = readGeneric myOptions
-
-instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
-  read obj = do
-    anchor <- readProp "anchor" obj
-    focus <- readProp "focus" obj
-    syntax <- readProp "syntax" obj
-    pure (RawSelectSyntax
-      { anchor: anchor
-      , focus: focus
-      , syntax: syntax
-      }
-      )
-
 -- type RawSelection = { anchor :: Path, focus :: Path }
 type RawSelection =
   { anchorKey :: String
@@ -240,6 +217,60 @@ derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
 instance foreignWrappedRawSelection :: IsForeign WrappedRawSelection where
   read = readGeneric myOptions
 
+rawSelectionToSelection :: RawSelection -> Syntax -> Either String Selection
+rawSelectionToSelection rawSelection syntax =
+  if rawSelection.anchorOffset == rawSelection.focusOffset
+  then AtomicSelection <$> makePath syntax rawSelection.anchorOffset
+  else SpanningSelection
+         <$> makePath syntax rawSelection.anchorOffset
+         <*> makePath syntax rawSelection.focusOffset
+
+
+newtype RawSelectSyntax = RawSelectSyntax
+  { anchor :: Int
+  , focus :: Int
+  , syntax :: Syntax
+  }
+
+-- derive instance genericRawSelectSyntax :: Generic RawSelectSyntax
+-- instance foreignRawSelectSyntax :: IsForeign RawSelectSyntax where
+--   read = readGeneric myOptions
+
+instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
+  read obj = do
+    anchor <- readProp "anchor" obj
+    focus <- readProp "focus" obj
+    syntax <- readProp "syntax" obj
+    pure (RawSelectSyntax
+      { anchor: anchor
+      , focus: focus
+      , syntax: syntax
+      }
+      )
+
+unrawSelectSyntax :: RawSelectSyntax -> Either String SelectSyntax
+unrawSelectSyntax rss@(RawSelectSyntax {anchor, focus, syntax}) = do
+  let rawSelection =
+        { anchorKey: ""
+        , anchorOffset: anchor
+        , focusKey: ""
+        , focusOffset: focus
+        }
+  selection <- rawSelectionToSelection rawSelection syntax
+  pure (SelectSyntax ({syntax, selection}))
+
+makeRawSelectSyntax :: SelectSyntax -> Either String RawSelectSyntax
+makeRawSelectSyntax (SelectSyntax {syntax, selection}) =
+  case selection of
+       -- TODO mixing up the notions of anchor/focus and left/right
+    SpanningSelection lpath rpath -> do
+      anchor <- unmakePath syntax lpath
+      focus <- unmakePath syntax rpath
+      pure (RawSelectSyntax {anchor, focus, syntax})
+    AtomicSelection path -> do
+      i <- unmakePath syntax path
+      pure (RawSelectSyntax {anchor: i, focus: i, syntax})
+
 toPreEntityMap :: Map Int String -> PreEntityMap
 toPreEntityMap entityTypes =
   let len = Map.size entityTypes
@@ -255,41 +286,6 @@ type ContentState =
   , selection :: RawSelection
   , preEntityMap :: PreEntityMap
   }
-
-unrawSelectSyntax :: RawSelectSyntax -> Either String SelectSyntax
-unrawSelectSyntax rss@(RawSelectSyntax {anchor, focus, syntax}) = do
-  selection <- rawSelectSyntaxToSelection rss
-  pure (SelectSyntax ({syntax, selection}))
-
-makeRawSelectSyntax :: SelectSyntax -> Either String RawSelectSyntax
-makeRawSelectSyntax (SelectSyntax {syntax, selection}) =
-  case selection of
-       -- TODO mixing up the notions of anchor/focus and left/right
-    SpanningSelection lpath rpath -> do
-      anchor <- unmakePath syntax lpath
-      focus <- unmakePath syntax rpath
-      pure (RawSelectSyntax {anchor, focus, syntax})
-    AtomicSelection path -> do
-      i <- unmakePath syntax path
-      pure (RawSelectSyntax {anchor: i, focus: i, syntax})
-
-rawSelectSyntaxToSelection :: RawSelectSyntax -> Either String Selection
-rawSelectSyntaxToSelection (RawSelectSyntax {anchor, focus, syntax}) =
-  let rawSelection =
-        { anchorKey: ""
-        , anchorOffset: anchor
-        , focusKey: ""
-        , focusOffset: focus
-        }
-  in rawSelectionToSelection rawSelection syntax
-
-rawSelectionToSelection :: RawSelection -> Syntax -> Either String Selection
-rawSelectionToSelection rawSelection syntax =
-  if rawSelection.anchorOffset == rawSelection.focusOffset
-  then AtomicSelection <$> makePath syntax rawSelection.anchorOffset
-  else SpanningSelection
-         <$> makePath syntax rawSelection.anchorOffset
-         <*> makePath syntax rawSelection.focusOffset
 
 
 contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
