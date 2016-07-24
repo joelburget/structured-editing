@@ -303,6 +303,7 @@ operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
           , selection: AtomicSelection (PathOffset (o + 1))
           })
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
+  | otherwise = Left "inserting non-digit in number"
 operateAtomic (SyntaxNum n) (PathOffset o) Backspace
   | o == 0 = Left "backspacing out the left of a number"
   | o > length (show n)
