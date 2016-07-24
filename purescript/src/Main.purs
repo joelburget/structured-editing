@@ -304,6 +304,9 @@ operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
           })
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
 operateAtomic (SyntaxNum n) (PathOffset o) Backspace
+  | o == 0 = Left "backspacing out the left of a number"
+  | o > length (show n)
+  = Left "inconsistency: backspacing with cursor past end of number"
   | n >= 10 || n < 0 = case I.fromString (splice (show n) (o - 1) 1 "") of
       -- backspace goes left -- splice - 1!
       Just newNum -> Right (SelectSyntax
