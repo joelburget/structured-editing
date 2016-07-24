@@ -12,7 +12,7 @@ import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
-import Data.Generic
+import Data.Generic (class Generic, gShow, gEq)
 import Data.Int as I
 import Data.Map as Map
 import Data.Map (Map)
@@ -21,22 +21,9 @@ import Data.String (length)
 import Data.String as String
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
-import Util.String (splice)
 
-
-data PathStep = StepLeft | StepRight
-
-derive instance genericPathStep :: Generic PathStep
-instance showPathStep :: Show PathStep where show = gShow
-instance eqPathStep :: Eq PathStep where eq = gEq
-
-data Path
-  = PathOffset Int
-  | PathCons PathStep Path
-
-derive instance genericPath :: Generic Path
-instance showPath :: Show Path where show = gShow
-instance eqPath :: Eq Path where eq = gEq
+import Path (Path(..), PathStep(..), subPath, getOffset)
+import Util.String (isDigit, splice)
 
 
 data Action
@@ -84,9 +71,6 @@ instance syntaxIsForeign :: IsForeign Syntax where
       "plus" -> Plus <$> readProp "l" obj <*> readProp "r" obj
       "hole" -> Hole <$> readProp "name" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
-
-isDigit :: Char -> Boolean
-isDigit x = x >= '0' && x <= '9'
 
 type EntityRange =
   { offset :: Int
@@ -194,11 +178,6 @@ blockFromContent inlines =
      , preEntityMap: toPreEntityMap finalState.preEntityMap
      }
 
-getOffset :: Maybe Path -> Maybe Int
-getOffset path = case path of
-  Just (PathOffset n) -> Just n
-  _ -> Nothing
-
 inlineSelection :: Int -> Int -> Maybe Int -> Maybe Int -> InlineInfo
 inlineSelection start len anchorOffset focusOffset =
   let f offset = case offset of
@@ -209,15 +188,6 @@ inlineSelection start len anchorOffset focusOffset =
   in { anchor: f anchorOffset
      , focus: f focusOffset
      }
-
-subPath :: PathStep -> Maybe Path -> Maybe Path
-subPath step path = case path of
-  Nothing -> Nothing
-  Just (PathOffset _) -> Nothing
-  Just (PathCons step' rest) ->
-    if step == step'
-       then Just rest
-       else Nothing
 
 contentFromSyntax :: Syntax
                   -> Maybe Path
