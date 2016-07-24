@@ -8,23 +8,22 @@ import Data.Array ((:), concat, snoc, (..))
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
-import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
+import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
-import Data.Generic (class Generic, gShow, gEq)
-import Data.Int as I
+import Data.Generic (class Generic)
 import Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length)
-import Data.String as String
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
 
+import Operate (Action, SelectSyntax(..), Selection(..), operate)
 import Path (Path(..), PathStep(..), subPath, getOffset)
 import Syntax (Syntax(..), mkForeign)
-import Util.String (isDigit, splice, whenJust)
+import Util.String (whenJust)
 
 
 myOptions :: Options
@@ -32,24 +31,6 @@ myOptions = defaultOptions
   { sumEncoding = TaggedObject { tagFieldName: "tag", contentsFieldName: "value" }
   , unwrapNewtypes = true
   }
-
-data Action
-  = Backspace
-  | Typing Char
-
--- derive instance genericAction :: Generic Action
-
--- "expected one of ["Main.Backspace","Main.Typing"]"
--- instance foreignAction :: IsForeign Action where
---   read = readGeneric myOptions
-
-instance actionIsForeign :: IsForeign Action where
-  read obj = do
-    tag <- readProp "tag" obj
-    case tag of
-      "typing" -> Typing <$> readProp "value" obj
-      "backspace" -> pure Backspace
-      _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
 
 type EntityRange =
@@ -212,93 +193,6 @@ contentFromSyntax syntax anchor focus = do
       in pure (Tuple arr (Map.singleton myId []))
 
 
--- need to make all these aware of location of cursor
-operateAtomic :: Syntax -> Path -> Action -> Either String SelectSyntax
-operateAtomic (Plus l r) path action = case path of
-  PathCons StepLeft rest -> do
-    SelectSyntax {selection, syntax} <- operateAtomic l rest action
-    case selection of
-      AtomicSelection path ->
-        pure (SelectSyntax {
-          selection: AtomicSelection (PathCons StepLeft path),
-          syntax: Plus syntax r
-          })
-      SpanningSelection _ _ -> Left "can't yet handle spanning selection"
-  PathCons StepRight rest -> do
-    SelectSyntax {selection, syntax} <- operateAtomic r rest action
-    case selection of
-      AtomicSelection path ->
-        pure (SelectSyntax {
-          selection: AtomicSelection (PathCons StepRight path),
-          syntax: Plus l syntax
-          })
-      SpanningSelection _ _ -> Left "can't yet handle spanning selection"
-  -- TODO maybe we need to also handle parens?
-  _ -> Left "ran out of steps when operating on Plus"
-
-operateAtomic (Hole name) (PathOffset o) (Typing char)
-  | name == "" && isDigit char =
-      case I.fromString (String.singleton char) of
-        Just n -> Right (SelectSyntax
-          { syntax: SyntaxNum n
-          , selection: AtomicSelection (PathOffset (o + 1))
-          })
-        Nothing -> Left "insonsistency: unable to parse after inserting single digit"
-  | name == "" && char == '(' = Right (
-      SelectSyntax {
-        syntax: Plus (Hole "l") (Hole "r"),
-        selection: AtomicSelection (PathOffset (o + 1))
-      })
-  | otherwise = Right (
-      SelectSyntax {
-        syntax: Hole (splice name o 0 (String.singleton char)),
-        selection: AtomicSelection (PathOffset (o + 1))
-      })
-operateAtomic (Hole name) (PathOffset o) Backspace
-  | name == "" = Left "backspacing out of empty hole"
-  | o > length name
-  = Left "inconsistency: backspacing with cursor past end of hole"
-  | o == 0 = Left "backspacing out the left of a hole"
-  | otherwise
-  -- backspace goes left -- splice - 1!
-  = let newName = splice name (o - 1) 1 ""
-    in Right (
-      SelectSyntax {
-        syntax: Hole newName,
-        selection: AtomicSelection (PathOffset (o - 1))
-      })
-operateAtomic (SyntaxNum n) (PathOffset o) (Typing char)
-  | char == '-' && o == 0
-  = Right (SelectSyntax
-      { syntax: SyntaxNum (-n)
-      , selection: AtomicSelection (PathOffset (o + 1))
-      })
-  | isDigit char =
-      case I.fromString (splice (show n) o 0 (String.singleton char)) of
-        Just newNum -> Right (SelectSyntax
-          { syntax: SyntaxNum newNum
-          , selection: AtomicSelection (PathOffset (o + 1))
-          })
-        Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
-  | otherwise = Left "inserting non-digit in number"
-operateAtomic (SyntaxNum n) (PathOffset o) Backspace
-  | o == 0 = Left "backspacing out the left of a number"
-  | o > length (show n)
-  = Left "inconsistency: backspacing with cursor past end of number"
-  | n >= 10 || n < 0 = case I.fromString (splice (show n) (o - 1) 1 "") of
-      -- backspace goes left -- splice - 1!
-      Just newNum -> Right (SelectSyntax
-        { syntax: SyntaxNum newNum
-        , selection: AtomicSelection (PathOffset (o - 1))
-        })
-      Nothing -> Left "inconsistency: unable to parse after backspacing in number"
-  | otherwise = Right (
-      SelectSyntax {
-        syntax: Hole "",
-        selection: AtomicSelection (PathOffset (o - 1))
-      })
-
-operateAtomic _ _ _ = Left "had steps remaining at a leaf"
 
 newtype RawSelectSyntax = RawSelectSyntax
   { anchor :: Int
@@ -321,15 +215,6 @@ instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
       , syntax: syntax
       }
       )
-
-newtype SelectSyntax = SelectSyntax
-  { selection :: Selection
-  , syntax :: Syntax
-  }
-
-derive instance genericSelectSyntax :: Generic SelectSyntax
-instance eqSelectSyntax :: Eq SelectSyntax where eq = gEq
-instance showSelectSyntax :: Show SelectSyntax where show = gShow
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
 type RawSelection =
@@ -354,12 +239,6 @@ newtype WrappedRawSelection = WrappedRawSelection -- RawSelection
 derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
 instance foreignWrappedRawSelection :: IsForeign WrappedRawSelection where
   read = readGeneric myOptions
-
-data Selection
-  = SpanningSelection Path Path
-  | AtomicSelection Path
-
-derive instance genericSelection :: Generic Selection
 
 toPreEntityMap :: Map Int String -> PreEntityMap
 toPreEntityMap entityTypes =
@@ -486,14 +365,6 @@ makePath syntax n = lmap
                          then Right (PathOffset (offset - subConsumed))
                          else Left (subConsumed + 5)
 
-operateJs :: Fn2 Foreign Foreign Foreign
-operateJs = mkFn2 rawOperateForeign
-
-operate :: SelectSyntax -> Action -> Either String SelectSyntax
-operate (SelectSyntax {selection, syntax}) action = case selection of
-  AtomicSelection path -> operateAtomic syntax path action
-  SpanningSelection p1 p2 -> Left "spanning actions not yet implemented"
-
 contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
 contentStateFromSelectSyntax (SelectSyntax rec) = do
   -- TODO can probably get this from rawSelectionToSelection
@@ -514,6 +385,9 @@ contentStateFromSelectSyntaxJs =
       foreignF :: Foreign -> Foreign
       foreignF = either toForeign toForeign <<< eitherF
   in mkFn1 foreignF
+
+operateJs :: Fn2 Foreign Foreign Foreign
+operateJs = mkFn2 rawOperateForeign
 
 rawOperateForeign :: Foreign -> Foreign -> Foreign
 rawOperateForeign selectSyntax action =
