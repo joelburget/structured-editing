@@ -18,7 +18,7 @@ import type {
   RawDraftContentBlock,
 } from 'draft-js';
 
-import {operateJs, contentStateFromSelectSyntaxJs} from './purescript/output/Main/index.js';
+import {operate, genContentState, initSelectSyntax, setEndpoints} from './purescript/output/Main/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
@@ -160,15 +160,7 @@ export class AdditionEditor extends React.Component {
     const selection = editorState.getSelection()
     const anchor = selection.getAnchorOffset();
     const focus = selection.getFocusOffset();
-    const {
-      anchor: oldAnchor,
-      focus: oldFocus,
-    } = this.props.selectSyntax;
-    if (anchor !== oldAnchor || focus !== oldFocus) {
-      this.props.onMoveCursor({anchor, focus});
-    } else {
-      console.log('unhandled raw onChange', editorState.toJS());
-    }
+    this.props.onMoveCursor({anchor, focus})
   }
 
   render() {
@@ -179,7 +171,7 @@ export class AdditionEditor extends React.Component {
         focusOffset, focusKey,
       },
       preEntityMap,
-    } = contentStateFromSelectSyntaxJs(this.props.selectSyntax);
+    } = genContentState(this.props.opaqueSyntax);
 
     const entityMap = {};
     preEntityMap.value0.forEach((val, ix) => {
@@ -219,7 +211,7 @@ export class StatefulAdditionEditor extends React.Component {
     super();
 
     this.state = {
-      selectSyntax,
+      opaqueSyntax: initSelectSyntax(selectSyntax),
       lastWarning: null,
     };
 
@@ -228,24 +220,33 @@ export class StatefulAdditionEditor extends React.Component {
   }
 
   _onChange(command) {
-    const result = operateJs(this.state.selectSyntax, command);
-    if (typeof result === 'string') {
-      this.setState({lastWarning: result});
+    const result = operate(this.state.opaqueSyntax, command);
+    if (result.constructor.name === 'Left') {
+      const lastWarning = result.value0;
+      this.setState({lastWarning});
     } else {
+      const opaqueSyntax = result.value0;
       this.setState({
-        selectSyntax: result,
+        opaqueSyntax,
         lastWarning: null,
       });
-      this.props.onChange(
-        result.syntax,
-        command
-      );
+      this.props.onChange(opaqueSyntax, command);
     }
   }
 
   _handleMoveCursor(anchorFocus) {
-    const selectSyntax = Object.assign({}, this.state.selectSyntax, anchorFocus);
-    this.setState({selectSyntax});
+    const result = setEndpoints(this.state.opaqueSyntax, anchorFocus)
+    if (result.constructor.name === 'Left') {
+      const lastWarning = result.value0;
+      this.setState({lastWarning});
+    } else {
+      const opaqueSyntax = result.value0;
+      this.setState({
+        opaqueSyntax,
+        lastWarning: null,
+      });
+      // this.props.onChange(opaqueSyntax, TODO);
+    }
   }
 
   componentDidMount() {
@@ -253,13 +254,13 @@ export class StatefulAdditionEditor extends React.Component {
   }
 
   render() {
-    const {selectSyntax, lastWarning} = this.state;
+    const {opaqueSyntax, lastWarning} = this.state;
     return (
       <div style={styles.root}>
         <AdditionEditor
           onChange={this.onChange}
           onMoveCursor={this.handleMoveCursor}
-          selectSyntax={selectSyntax}
+          opaqueSyntax={opaqueSyntax}
           ref={ref => this.editor = ref}
         />
         {lastWarning && <h2 style={styles.err}>{lastWarning}</h2>}

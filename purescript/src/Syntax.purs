@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
-import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
+import Data.Foreign (ForeignError(JSONError))
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Generic (class Generic, gShow, gEq)
 import Data.List as List
@@ -23,14 +23,6 @@ data Syntax
 derive instance genericSyntax :: Generic Syntax
 instance showSyntax :: Show Syntax where show = gShow
 instance eqSyntax :: Eq Syntax where eq = gEq
-
-class MkForeign a where
-  mkForeign :: a -> Foreign
-
-instance syntaxMkForeign :: MkForeign Syntax where
-  mkForeign (SyntaxNum i) = toForeign {tag: "number", value: i}
-  mkForeign (Hole name) = toForeign {tag: "hole", name}
-  mkForeign (Plus l r) = toForeign {tag: "plus", l: mkForeign l, r: mkForeign r}
 
 instance syntaxIsForeign :: IsForeign Syntax where
   read obj = do

@@ -6,7 +6,7 @@ import Prelude
 import Control.Monad.State (State, modify, get, evalState, execState)
 import Data.Array ((:), concat, snoc, (..))
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), either)
+import Data.Either (Either, either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
@@ -20,9 +20,10 @@ import Data.String (length)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
 
-import Operate (Action, SelectSyntax(..), Selection(..), operate)
+import Operate as Operate
+import Operate (SelectSyntax(..), Selection(..))
 import Path (Path, PathStep(..), subPath, getOffset)
-import Syntax (Syntax(..), mkForeign, makePath, unmakePath)
+import Syntax (Syntax(..), makePath, unmakePath)
 import Util.String (whenJust)
 
 
@@ -287,52 +288,40 @@ type ContentState =
   , preEntityMap :: PreEntityMap
   }
 
+newtype WrappedAnchorFocus = WrappedAnchorFocus {anchor :: Int, focus :: Int}
 
-contentStateFromSelectSyntax :: SelectSyntax -> Either String ContentState
-contentStateFromSelectSyntax (SelectSyntax rec) = do
-  -- TODO can probably get this from rawSelectionToSelection
+derive instance genericWrappedAnchorFocus :: Generic WrappedAnchorFocus
+instance foreignWrappedAnchorFocus :: IsForeign WrappedAnchorFocus where
+  read = readGeneric myOptions
+
+
+genContentState :: Fn1 SelectSyntax Foreign
+genContentState = mkFn1 \(SelectSyntax rec) ->
   let yieldsContent = case rec.selection of
         SpanningSelection l r -> contentFromSyntax rec.syntax (Just l) (Just r)
         AtomicSelection x -> contentFromSyntax rec.syntax (Just x) (Just x)
       contentAndKeymapping = evalState yieldsContent 0
       contentState = blockFromContent (fst contentAndKeymapping)
-  pure contentState
+  in toForeign contentState
 
-contentStateFromSelectSyntaxJs :: Fn1 Foreign Foreign
-contentStateFromSelectSyntaxJs =
-  let eitherF :: Foreign -> Either String ContentState
-      eitherF f = do
-        rawSelectSyntax <- lmap show (read f)
-        selectSyntax <- unrawSelectSyntax rawSelectSyntax
-        contentStateFromSelectSyntax selectSyntax
-      foreignF :: Foreign -> Foreign
-      foreignF = either toForeign toForeign <<< eitherF
-  in mkFn1 foreignF
+operate :: Fn2 SelectSyntax Foreign (Either String SelectSyntax)
+operate = mkFn2 \selectSyntax foreignAction -> do
+  action <- lmap show (read foreignAction)
+  Operate.operate selectSyntax action
 
-operateJs :: Fn2 Foreign Foreign Foreign
-operateJs = mkFn2 rawOperateForeign
+initSelectSyntax :: Fn1 Foreign Foreign
+initSelectSyntax = mkFn1 \obj -> either toForeign toForeign $ do
+  raw <- lmap show (read obj)
+  unrawSelectSyntax raw
 
-rawOperateForeign :: Foreign -> Foreign -> Foreign
-rawOperateForeign selectSyntax action =
-  let allRead = Tuple <$> read selectSyntax <*> read action
-
-      -- "raw" in the sense that it's operating on a raw selection
-      rawOperate :: RawSelectSyntax
-                 -> Action
-                 -> Either String RawSelectSyntax
-      rawOperate rawSelectSyntax action = do
-        selectSyntax <- unrawSelectSyntax rawSelectSyntax
-        ss <- operate selectSyntax action
-        makeRawSelectSyntax ss
-
-      result :: Either String RawSelectSyntax
-      result = case allRead of
-        Left err -> Left (show err)
-        Right (Tuple rawSelectSyntax action') ->
-          rawOperate rawSelectSyntax action'
-
-  in case result of
-       Left err -> toForeign err
-       Right (RawSelectSyntax {anchor, focus, syntax}) ->
-       -- take care to serialize in the object-ey, not classy way
-         toForeign {anchor, focus, syntax: mkForeign syntax}
+setEndpoints :: Fn2 SelectSyntax Foreign (Either String SelectSyntax)
+setEndpoints = mkFn2 \(SelectSyntax {syntax}) foreignEndpoints -> do
+  WrappedAnchorFocus {anchor, focus} <- lmap show (read foreignEndpoints)
+  let rawSelection =
+        { anchorOffset: anchor
+        , anchorKey: ""
+        , focusOffset: focus
+        , focusKey: ""
+        }
+  selection <- rawSelectionToSelection rawSelection syntax
+  pure (SelectSyntax {selection, syntax})
