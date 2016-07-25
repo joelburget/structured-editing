@@ -295,6 +295,11 @@ instance foreignWrappedAnchorFocus :: IsForeign WrappedAnchorFocus where
   read = readGeneric myOptions
 
 
+initSelectSyntax :: Fn1 Foreign (Either String SelectSyntax)
+initSelectSyntax = mkFn1 \obj -> do
+  raw <- lmap show (read obj)
+  unrawSelectSyntax raw
+
 genContentState :: Fn1 SelectSyntax Foreign
 genContentState = mkFn1 \(SelectSyntax rec) ->
   let yieldsContent = case rec.selection of
@@ -308,11 +313,6 @@ operate :: Fn2 SelectSyntax Foreign (Either String SelectSyntax)
 operate = mkFn2 \selectSyntax foreignAction -> do
   action <- lmap show (read foreignAction)
   Operate.operate selectSyntax action
-
-initSelectSyntax :: Fn1 Foreign Foreign
-initSelectSyntax = mkFn1 \obj -> either toForeign toForeign $ do
-  raw <- lmap show (read obj)
-  unrawSelectSyntax raw
 
 setEndpoints :: Fn2 SelectSyntax Foreign (Either String SelectSyntax)
 setEndpoints = mkFn2 \(SelectSyntax {syntax}) foreignEndpoints -> do

@@ -206,47 +206,60 @@ export class AdditionEditor extends React.Component {
   }
 }
 
+function handleEither(either, left, right) {
+  either.constructor.name === 'Left'
+    ? left(either.value0)
+    : right(either.value0);
+}
+
 export class StatefulAdditionEditor extends React.Component {
   constructor({onChange, selectSyntax}) {
     super();
 
-    this.state = {
-      opaqueSyntax: initSelectSyntax(selectSyntax),
-      lastWarning: null,
-    };
+    handleEither(
+      initSelectSyntax(selectSyntax),
+      lastWarning => {
+        this.state = {
+          // TODO we don't actually handle the case when opaqueSyntax is null
+          opaqueSyntax: null,
+          lastWarning,
+        };
+      },
+      opaqueSyntax => {
+        this.state = {
+          opaqueSyntax,
+          lastWarning: null,
+        };
+      }
+    );
 
     this.onChange = command => this._onChange(command);
     this.handleMoveCursor = anchorFocus => this._handleMoveCursor(anchorFocus);
   }
 
   _onChange(command) {
-    const result = operate(this.state.opaqueSyntax, command);
-    if (result.constructor.name === 'Left') {
-      const lastWarning = result.value0;
-      this.setState({lastWarning});
-    } else {
-      const opaqueSyntax = result.value0;
-      this.setState({
-        opaqueSyntax,
-        lastWarning: null,
-      });
-      this.props.onChange(opaqueSyntax, command);
-    }
+    handleEither(
+      operate(this.state.opaqueSyntax, command),
+      lastWarning => this.setState({lastWarning}),
+      opaqueSyntax => {
+        this.setState({opaqueSyntax, lastWarning: null});
+        this.props.onChange(opaqueSyntax, command);
+      }
+    );
   }
 
   _handleMoveCursor(anchorFocus) {
-    const result = setEndpoints(this.state.opaqueSyntax, anchorFocus)
-    if (result.constructor.name === 'Left') {
-      const lastWarning = result.value0;
-      this.setState({lastWarning});
-    } else {
-      const opaqueSyntax = result.value0;
-      this.setState({
-        opaqueSyntax,
-        lastWarning: null,
-      });
-      // this.props.onChange(opaqueSyntax, TODO);
-    }
+    handleEither(
+      setEndpoints(this.state.opaqueSyntax, anchorFocus),
+      lastWarning => this.setState({lastWarning}),
+      opaqueSyntax => {
+        this.setState({
+          opaqueSyntax,
+          lastWarning: null,
+        });
+        // this.props.onChange(opaqueSyntax, TODO);
+      }
+    );
   }
 
   componentDidMount() {
