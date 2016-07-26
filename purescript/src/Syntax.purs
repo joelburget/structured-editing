@@ -33,50 +33,108 @@ instance syntaxIsForeign :: IsForeign Syntax where
       "hole" -> Hole <$> readProp "name" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
+-- class Sized a where
+--   size :: a -> Int
+--
+-- instance syntaxSize :: Sized Syntax where
+
 syntaxSize :: Syntax -> Int
 syntaxSize (SyntaxNum n) = length (show n)
 syntaxSize (Hole name) = length name
 syntaxSize (Plus l r) = 5 + syntaxSize l + syntaxSize r
 
-newtype SyntaxZipper = SyntaxZipper {syntax :: Syntax, past :: Past}
+type SyntaxZipper =
+  { syntax :: Syntax
+  , past :: Past
+  , anchor :: Path
+  , focus :: Path
+  }
+
+newtype ZoomedSZ = ZoomedSZ SyntaxZipper
 
 type Past = List (Tuple PathStep Syntax)
 
+-- TODO answer question of whether this is zoomed. If the first shown character
+-- is rendered by a child then it isn't.
 makeZipper :: Syntax -> SyntaxZipper
-makeZipper syntax = SyntaxZipper {syntax, past: List.Nil}
+makeZipper syntax = {syntax, past: List.Nil, anchor: PathOffset 0, focus: PathOffset 0}
+
+zoomIn :: SyntaxZipper -> ZoomedSZ
+zoomIn zipper@{syntax, past} = case syntax of
+  SyntaxNum _ -> ZoomedSZ zipper
+  Hole _ -> ZoomedSZ zipper
+  Plus left right -> case tryZoomSelection zipper StepLeft of
+    -- zoomIn (goLeft zipper)
+    Just {anchor, focus} -> ZoomedSZ
+      { syntax: left
+      , past: Tuple StepLeft right : past
+      , anchor
+      , focus
+      }
+    -- TODO: dedup between this and goLeft / goRight
+    -- zoomIn (goRight zipper)
+    Nothing -> case tryZoomSelection zipper StepRight of
+      Just {anchor, focus} -> ZoomedSZ
+        { syntax: right
+        , past: Tuple StepRight left : past
+        , anchor
+        , focus
+        }
+      Nothing -> ZoomedSZ zipper
 
 getTree :: SyntaxZipper -> Syntax
-getTree (SyntaxZipper {syntax}) = syntax
+getTree {syntax} = syntax
 
 getPast :: SyntaxZipper -> Past
-getPast (SyntaxZipper {past}) = past
+getPast {past} = past
 
-zipUp :: SyntaxZipper -> Syntax
-zipUp = getTree <<< go
-  where go tz = maybe tz go (up tz)
+zipUp :: SyntaxZipper -> SyntaxZipper
+zipUp tz = maybe tz zipUp (up tz)
 
 up :: SyntaxZipper -> Maybe SyntaxZipper
-up (SyntaxZipper {syntax, past}) = do
+up {syntax, past, anchor, focus} = do
   {head: Tuple dir graftSyn, tail} <- List.uncons past
+  -- graft the other side back on, track the size we're adding on the left so
+  -- we can add it to the selection offsets
   let newSyntax = case dir of
         StepLeft -> Plus syntax graftSyn
         StepRight -> Plus graftSyn syntax
-  pure (SyntaxZipper {syntax: newSyntax, past: tail})
+  pure
+    { syntax: newSyntax
+    , past: tail
+    , anchor: PathCons dir anchor
+    , focus: PathCons dir focus
+    }
 
+type ZipperSelection r = {anchor :: Path, focus :: Path | r}
+
+tryZoomSelection :: forall a. ZipperSelection a
+                 -> PathStep
+                 -> Maybe (ZipperSelection ())
+tryZoomSelection {anchor: PathCons a anchor, focus: PathCons f focus} step =
+  if a == step && f == step then Just {anchor, focus} else Nothing
+tryZoomSelection _ _  = Nothing
+
+-- XXX get the anchor and focus right
 down :: PathStep -> SyntaxZipper -> Maybe SyntaxZipper
-down dir (SyntaxZipper {syntax, past}) = case syntax of
-  Plus l r -> Just case dir of
-    StepLeft -> SyntaxZipper {syntax: l, past: Tuple StepLeft r : past}
-    StepRight -> SyntaxZipper {syntax: r, past: Tuple StepRight l : past}
+down dir zipper@{syntax, past} = case syntax of
+  Plus left right -> do
+    {anchor, focus} <- tryZoomSelection zipper dir
+    pure
+      { syntax: left
+      , past: Tuple StepLeft right : past
+      , anchor
+      , focus
+      }
   _ -> Nothing
 
-left :: SyntaxZipper -> Maybe SyntaxZipper
-left zipper = do
+goLeft :: SyntaxZipper -> Maybe SyntaxZipper
+goLeft zipper = do
   zipper' <- up zipper
   down StepLeft zipper'
 
-right :: SyntaxZipper -> Maybe SyntaxZipper
-right zipper = do
+goRight :: SyntaxZipper -> Maybe SyntaxZipper
+goRight zipper = do
   zipper' <- up zipper
   down StepRight zipper'
 
@@ -87,12 +145,12 @@ sibling zipper = do
   down (toggle dir) zipper'
 
 editFocus :: (Syntax -> Syntax) -> SyntaxZipper -> SyntaxZipper
-editFocus f (SyntaxZipper {syntax, past}) = SyntaxZipper {syntax: f syntax, past}
+editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 
 makePath :: Syntax -> Int -> Either String Path
 makePath syntax n = lmap
-  (\c -> "rawSelectionToSelection overflow: " <>
+  (\c -> "makePath overflow: " <>
     show n <> " demanded, " <> show c <> " consumed")
   (consumePath syntax n)
   where
@@ -131,30 +189,3 @@ makePath syntax n = lmap
                       in if offset - subConsumed <= 5
                          then Right (PathOffset (offset - subConsumed))
                          else Left (subConsumed + 5)
-
-unmakePath :: Syntax -> Path -> Either String Int
-unmakePath (SyntaxNum n) (PathOffset o) = if o <= length (show n)
-  then Right o
-  else Left "unmakePath: offset too large for number"
-unmakePath (SyntaxNum _) (PathCons _ _) =
-  Left "unmakePath: tried to go in to number"
-unmakePath (Hole name) (PathOffset o) = if o <= length name
-  then Right o
-  else Left "unmakePath: offset too large for hole name"
-unmakePath (Hole _) (PathCons _ _) =
-  Left "unmakePath: tried to go in to hole"
-unmakePath (Plus l r) (PathOffset o) =
-  if o == 0
-    then Right 0
-    else if o <= 3
-      then Right (syntaxSize l + o)
-      else if o <= 5
-        then Right (syntaxSize l + syntaxSize r + o)
-        else Left "unmakePath: offste too large for plus"
-unmakePath (Plus l r) (PathCons dir rest) =
-  if dir == StepLeft
-    then (1 + _) <$> unmakePath l rest
-    -- else (4 + (syntaxSize l + _)) <$> unmakePath r rest
-    else do
-      i <- unmakePath r rest
-      pure (4 + syntaxSize l + i)

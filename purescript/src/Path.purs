@@ -35,3 +35,7 @@ subPath step path = case path of
     if step == step'
        then Just rest
        else Nothing
+
+pathTail :: Path -> Maybe Path
+pathTail (PathCons _ tail) = Just tail
+pathTail _ = Nothing

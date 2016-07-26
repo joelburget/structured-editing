@@ -6,13 +6,14 @@ import Prelude
 import Control.Monad.State (State, modify, get, evalState, execState)
 import Data.Array ((:), concat, snoc, (..))
 import Data.Bifunctor (lmap)
-import Data.Either (Either, either)
+import Data.Either (Either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Generic (class Generic)
+import Data.List as List
 import Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
@@ -21,9 +22,8 @@ import Data.Traversable (sequence)
 import Data.Tuple (Tuple(Tuple), fst)
 
 import Operate as Operate
-import Operate (SelectSyntax(..), Selection(..))
 import Path (Path, PathStep(..), subPath, getOffset)
-import Syntax (Syntax(..), makePath, unmakePath)
+import Syntax (ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp)
 import Util.String (whenJust)
 
 
@@ -218,14 +218,6 @@ derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
 instance foreignWrappedRawSelection :: IsForeign WrappedRawSelection where
   read = readGeneric myOptions
 
-rawSelectionToSelection :: RawSelection -> Syntax -> Either String Selection
-rawSelectionToSelection rawSelection syntax =
-  if rawSelection.anchorOffset == rawSelection.focusOffset
-  then AtomicSelection <$> makePath syntax rawSelection.anchorOffset
-  else SpanningSelection
-         <$> makePath syntax rawSelection.anchorOffset
-         <*> makePath syntax rawSelection.focusOffset
-
 
 newtype RawSelectSyntax = RawSelectSyntax
   { anchor :: Int
@@ -249,28 +241,11 @@ instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
       }
       )
 
-unrawSelectSyntax :: RawSelectSyntax -> Either String SelectSyntax
-unrawSelectSyntax rss@(RawSelectSyntax {anchor, focus, syntax}) = do
-  let rawSelection =
-        { anchorKey: ""
-        , anchorOffset: anchor
-        , focusKey: ""
-        , focusOffset: focus
-        }
-  selection <- rawSelectionToSelection rawSelection syntax
-  pure (SelectSyntax ({syntax, selection}))
-
-makeRawSelectSyntax :: SelectSyntax -> Either String RawSelectSyntax
-makeRawSelectSyntax (SelectSyntax {syntax, selection}) =
-  case selection of
-       -- TODO mixing up the notions of anchor/focus and left/right
-    SpanningSelection lpath rpath -> do
-      anchor <- unmakePath syntax lpath
-      focus <- unmakePath syntax rpath
-      pure (RawSelectSyntax {anchor, focus, syntax})
-    AtomicSelection path -> do
-      i <- unmakePath syntax path
-      pure (RawSelectSyntax {anchor: i, focus: i, syntax})
+unrawSelectSyntax :: RawSelectSyntax -> Either String ZoomedSZ
+unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = do
+  anchor <- makePath syntax aOffset
+  focus <- makePath syntax fOffset
+  pure (zoomIn {syntax, past: List.Nil, anchor, focus})
 
 toPreEntityMap :: Map Int String -> PreEntityMap
 toPreEntityMap entityTypes =
@@ -288,40 +263,39 @@ type ContentState =
   , preEntityMap :: PreEntityMap
   }
 
+
+initSelectSyntax :: Fn1 Foreign (Either String ZoomedSZ)
+initSelectSyntax = mkFn1 \foreignSelectSyntax -> do
+  raw <- lmap show (read foreignSelectSyntax)
+  unrawSelectSyntax raw
+
+genContentState :: Fn1 SyntaxZipper Foreign
+genContentState = mkFn1 \zipper ->
+  let top = zipUp zipper
+      -- TODO why the Justs?
+      yieldsContent = contentFromSyntax top.syntax (Just top.anchor) (Just top.focus)
+      contentAndKeymapping = evalState yieldsContent 0
+      contentState = blockFromContent (fst contentAndKeymapping)
+  in toForeign contentState
+
+operate :: Fn2 SyntaxZipper Foreign (Either String SyntaxZipper)
+operate = mkFn2 \zipper foreignAction -> do
+  action <- lmap show (read foreignAction)
+  Operate.operate zipper action
+
+-- wrap this record so we can read it in `setEndpoints`
 newtype WrappedAnchorFocus = WrappedAnchorFocus {anchor :: Int, focus :: Int}
 
 derive instance genericWrappedAnchorFocus :: Generic WrappedAnchorFocus
 instance foreignWrappedAnchorFocus :: IsForeign WrappedAnchorFocus where
   read = readGeneric myOptions
 
-
-initSelectSyntax :: Fn1 Foreign (Either String SelectSyntax)
-initSelectSyntax = mkFn1 \obj -> do
-  raw <- lmap show (read obj)
-  unrawSelectSyntax raw
-
-genContentState :: Fn1 SelectSyntax Foreign
-genContentState = mkFn1 \(SelectSyntax rec) ->
-  let yieldsContent = case rec.selection of
-        SpanningSelection l r -> contentFromSyntax rec.syntax (Just l) (Just r)
-        AtomicSelection x -> contentFromSyntax rec.syntax (Just x) (Just x)
-      contentAndKeymapping = evalState yieldsContent 0
-      contentState = blockFromContent (fst contentAndKeymapping)
-  in toForeign contentState
-
-operate :: Fn2 SelectSyntax Foreign (Either String SelectSyntax)
-operate = mkFn2 \selectSyntax foreignAction -> do
-  action <- lmap show (read foreignAction)
-  Operate.operate selectSyntax action
-
-setEndpoints :: Fn2 SelectSyntax Foreign (Either String SelectSyntax)
-setEndpoints = mkFn2 \(SelectSyntax {syntax}) foreignEndpoints -> do
-  WrappedAnchorFocus {anchor, focus} <- lmap show (read foreignEndpoints)
-  let rawSelection =
-        { anchorOffset: anchor
-        , anchorKey: ""
-        , focusOffset: focus
-        , focusKey: ""
-        }
-  selection <- rawSelectionToSelection rawSelection syntax
-  pure (SelectSyntax {selection, syntax})
+setEndpoints :: Fn2 SyntaxZipper Foreign (Either String ZoomedSZ)
+setEndpoints = mkFn2 \zipper foreignEndpoints -> do
+  let top = zipUp zipper
+  WrappedAnchorFocus {anchor: aOffset, focus: fOffset}
+    <- lmap show (read foreignEndpoints)
+  anchor <- makePath top.syntax aOffset
+  focus <- makePath top.syntax fOffset
+  let zipper' = top {anchor = anchor, focus = focus}
+  pure (zoomIn zipper')
