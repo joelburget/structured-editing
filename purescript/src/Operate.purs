@@ -7,12 +7,14 @@ import Data.Foreign (ForeignError(JSONError))
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Generic (class Generic, gShow, gEq)
 import Data.Int as I
-import Data.Maybe (Maybe(Just, Nothing))
+import Data.List ((:))
+import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.String (length)
 import Data.String as String
+import Data.Tuple (Tuple(Tuple))
 
-import Path (Path(..), (.+))
-import Syntax (SyntaxZipper, Syntax(..))
+import Path (Path(..), (.+), PathStep(..))
+import Syntax (SyntaxZipper, Syntax(..), down)
 import Util.String (isDigit, splice)
 
 data Selection
@@ -58,10 +60,10 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
           }
         Nothing -> Left "insonsistency: unable to parse after inserting single digit"
   | name == "" && char == '(' = Right
-      { syntax: Plus (Hole "l") (Hole "r")
-      , past
-      , anchor: z.anchor .+ 1
-      , focus: z.anchor .+ 1
+      { syntax: Hole ""
+      , past: Tuple StepLeft (Hole "") : past
+      , anchor: PathOffset 0
+      , focus: PathOffset 0
       }
   | otherwise = Right
       { syntax: Hole (splice name o 0 (String.singleton char))
