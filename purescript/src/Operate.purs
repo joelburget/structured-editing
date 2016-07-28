@@ -17,11 +17,6 @@ import Path (Path(..), (.+), PathStep(..))
 import Syntax (SyntaxZipper, Syntax(..), down)
 import Util.String (isDigit, splice)
 
-data Selection
-  = SpanningSelection Path Path
-  | AtomicSelection Path
-
-derive instance genericSelection :: Generic Selection
 
 data Action
   = Backspace
