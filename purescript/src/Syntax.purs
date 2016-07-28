@@ -34,16 +34,6 @@ instance syntaxIsForeign :: IsForeign Syntax where
       "hole" -> Hole <$> readProp "name" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
--- class Sized a where
---   size :: a -> Int
---
--- instance syntaxSize :: Sized Syntax where
-
-syntaxSize :: Syntax -> Int
-syntaxSize (SyntaxNum n) = length (show n)
-syntaxSize (Hole name) = length name
-syntaxSize (Plus l r) = 5 + syntaxSize l + syntaxSize r
-
 syntaxHoles :: Syntax -> Array String
 syntaxHoles (SyntaxNum _) = []
 syntaxHoles (Hole name) = [name]
