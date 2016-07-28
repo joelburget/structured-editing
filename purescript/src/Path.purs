@@ -1,18 +1,10 @@
 module Path where
 
 import Prelude
-import Data.Generic
+import Data.Generic (class Generic, gEq, gShow)
 import Data.Maybe (Maybe(Just, Nothing))
 
-data PathStep = StepLeft | StepRight
-
-toggle :: PathStep -> PathStep
-toggle StepLeft = StepRight
-toggle StepRight = StepLeft
-
-derive instance genericPathStep :: Generic PathStep
-instance showPathStep :: Show PathStep where show = gShow
-instance eqPathStep :: Eq PathStep where eq = gEq
+type PathStep = Int
 
 data Path
   = PathOffset Int
@@ -35,6 +27,10 @@ subPath step path = case path of
     if step == step'
        then Just rest
        else Nothing
+
+pathHead :: Path -> Maybe PathStep
+pathHead (PathCons step _) = Just step
+pathHead _ = Nothing
 
 pathTail :: Path -> Maybe Path
 pathTail (PathCons _ tail) = Just tail

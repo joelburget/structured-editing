@@ -1,6 +1,6 @@
 "use strict";
 
-exports.splice = function(self) {
+function splice(self) {
   return function(idx) {
     return function(rem) {
       return function(str) {
@@ -8,4 +8,7 @@ exports.splice = function(self) {
       }
     }
   }
-};
+}
+
+exports.spliceStr = splice;
+exports.spliceArr = splice;

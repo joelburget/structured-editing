@@ -4,9 +4,10 @@ module Main where
 import Prelude
 
 import Control.Monad.State (State, modify, get, evalState, execState)
-import Data.Array ((:), concat, snoc, (..))
+import Data.Array ((:), concatMap, snoc, (..))
+import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Either (Either)
+import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
@@ -17,21 +18,13 @@ import Data.List as List
 import Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
-import Data.String (length)
+import Data.String as String
 import Data.Traversable (sequence)
-import Data.Tuple (Tuple(Tuple), fst)
 
 import Operate as Operate
-import Path (Path, PathStep(..), subPath, getOffset)
-import Syntax (ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles)
-import Util.String (whenJust)
-
-
-myOptions :: Options
-myOptions = defaultOptions
-  { sumEncoding = TaggedObject { tagFieldName: "tag", contentsFieldName: "value" }
-  , unwrapNewtypes = true
-  }
+import Path (Path, PathStep, subPath, getOffset)
+import Syntax (SUnit, ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles)
+import Util.String (whenJust, iForM)
 
 
 type EntityRange =
@@ -40,10 +33,14 @@ type EntityRange =
   , key :: Int
   }
 
-data LightInline
-  = InlinePlus Int String InlineInfo
-  | InlineNumber Int String InlineInfo
-  | InlineHole Int String InlineInfo
+type LightInline =
+  { ty :: LightInlineType
+  , key :: Int
+  , content :: String
+  , info :: InlineInfo
+  }
+
+data LightInlineType = InlineInternal | InlineLeaf | InlineHole | InlineConflict
 
 type InlineInfo = { anchor :: Maybe Int , focus :: Maybe Int }
 
@@ -87,15 +84,17 @@ blockFromContent inlines =
         }
 
       accum :: BFromCState -> LightInline -> BFromCState
-      accum state (InlinePlus i str info) = accumText i "plus" str (accumAnchorFocus info state)
-      accum state (InlineNumber i str info) = accumText i "number" str (accumAnchorFocus info state)
-      accum state (InlineHole i str info) = accumText i "hole" str (accumAnchorFocus info state)
+      accum state {ty, key, content, info} = case ty of
+        InlineInternal -> accumText key "internal" content (accumAnchorFocus info state)
+        InlineLeaf -> accumText key "leaf" content (accumAnchorFocus info state)
+        InlineHole -> accumText key "hole" content (accumAnchorFocus info state)
+        InlineConflict -> accumText key "conflict" content (accumAnchorFocus info state)
 
       -- For each LightInline, add its text to the current state
       accumText :: Int -> String -> String -> BFromCState -> BFromCState
       accumText key entityType str state =
-        let offset = length state.text
-            sLen = length str
+        let offset = String.length state.text
+            sLen = String.length str
         in state
              { currentOffset = state.currentOffset + sLen
              , text = state.text <> str
@@ -148,50 +147,68 @@ inlineSelection start len anchorOffset focusOffset =
      , focus: f focusOffset
      }
 
-contentFromSyntax :: Syntax
+plusTemplate :: Int -> Maybe Int -> Maybe Int -> Array LightInline -> Either String (Array LightInline)
+plusTemplate key anchorOffset focusOffset [l, r] = Right
+  [ {ty: InlineInternal, key, content: "(", info: inlineSelection 0 1 anchorOffset focusOffset}
+  , l
+  , {ty: InlineInternal, key, content: " + ", info: inlineSelection 1 3 anchorOffset focusOffset}
+  , r
+  , {ty: InlineInternal, key, content: ")", info: inlineSelection 4 1 anchorOffset focusOffset}
+  ]
+plusTemplate _ _ _ arr = Left $ "inconsistency: plus template expected two children, received " <> show (Array.length arr)
+
+contentFromSyntax :: forall a b. Show b
+                  => (Syntax a b)
                   -> Maybe Path
                   -> Maybe Path
-                  -> State Int (Tuple (Array LightInline) (Map Int (Array PathStep)))
+                  -> State Int {inlines :: Array LightInline, ids :: Map Int (Array PathStep)}
 contentFromSyntax syntax anchor focus = do
   let anchorOffset = getOffset anchor
       focusOffset = getOffset focus
   myId <- get
   modify (_+1)
   case syntax of
-    -- XXX need to flatten?
-    Plus l r -> do
-      Tuple l' m1 <- contentFromSyntax
-        l
-        (subPath StepLeft anchor)
-        (subPath StepLeft focus)
-      Tuple r' m2 <- contentFromSyntax
-        r
-        (subPath StepRight anchor)
-        (subPath StepRight focus)
-      let arr = concat
-            [ [InlinePlus myId "(" (inlineSelection 0 1 anchorOffset focusOffset)]
-            , l'
-            , [InlinePlus myId " + " (inlineSelection 1 3 anchorOffset focusOffset)]
-            , r'
-            , [InlinePlus myId ")" (inlineSelection 4 1 anchorOffset focusOffset)]
-            ]
+    Internal _ children -> do
+      -- TODO -- returning this way causes us to traverse the array twice later
+      children' <- iForM children \i child -> do
+        {inlines, ids: childIds} <- contentFromSyntax child (subPath i anchor) (subPath i focus)
+        pure
+          { inlines
+          , ids: (i:_) <$> childIds
+          }
 
-      let mergedMap = Map.insert
-            myId []
-            (Map.union ((StepLeft:_) <$> m1) ((StepRight:_) <$> m2))
-      pure (Tuple arr mergedMap)
+      -- XXX
+      let preInlines = plusTemplate myId anchorOffset focusOffset (concatMap _.inlines children')
+      let inlines = case preInlines of
+            Right x -> x
+            Left _ -> []
 
-    SyntaxNum n ->
-      let text = show n
-          arr = [
-            InlineNumber myId text (inlineSelection 0 (length text) anchorOffset focusOffset)
+      let ids = Map.insert myId [] (Map.unions (map _.ids children'))
+      pure {inlines, ids}
+
+    Leaf n ->
+      let content = show n
+          inlines = [
+            {ty: InlineLeaf, key: myId, content, info: inlineSelection 0 (String.length content) anchorOffset focusOffset}
           ]
-      in pure (Tuple arr (Map.singleton myId []))
+          ids = Map.singleton myId []
+       in pure {inlines, ids}
+
     Hole str ->
-      let arr = [
-            InlineHole myId str (inlineSelection 0 (length str) anchorOffset focusOffset)
+      let inlines = [
+          {ty: InlineHole, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset}
           ]
-      in pure (Tuple arr (Map.singleton myId []))
+          ids = Map.singleton myId []
+     in pure {inlines, ids}
+
+    Conflict l r ->
+      let inlines = [
+          -- XXX
+          {-- {ty: InlineConflict, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset} --}
+          {-- {ty: InlineConflict, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset} --}
+          ]
+          ids = Map.singleton myId []
+     in pure {inlines, ids}
 
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
@@ -214,22 +231,28 @@ newtype WrappedRawSelection = WrappedRawSelection -- RawSelection
   , focusOffset :: Int
   }
 
+myOptions :: Options
+myOptions = defaultOptions
+  { sumEncoding = TaggedObject { tagFieldName: "tag", contentsFieldName: "value" }
+  , unwrapNewtypes = true
+  }
+
 derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
 instance foreignWrappedRawSelection :: IsForeign WrappedRawSelection where
   read = readGeneric myOptions
 
 
-newtype RawSelectSyntax = RawSelectSyntax
+newtype RawSelectSyntax a b = RawSelectSyntax
   { anchor :: Int
   , focus :: Int
-  , syntax :: Syntax
+  , syntax :: Syntax a b
   }
 
 -- derive instance genericRawSelectSyntax :: Generic RawSelectSyntax
 -- instance foreignRawSelectSyntax :: IsForeign RawSelectSyntax where
 --   read = readGeneric myOptions
 
-instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
+instance rawSelectSyntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (RawSelectSyntax a b) where
   read obj = do
     anchor <- readProp "anchor" obj
     focus <- readProp "focus" obj
@@ -241,7 +264,7 @@ instance rawSelectSyntaxIsForeign :: IsForeign RawSelectSyntax where
       }
       )
 
-unrawSelectSyntax :: RawSelectSyntax -> Either String ZoomedSZ
+unrawSelectSyntax :: forall a b. RawSelectSyntax a b -> Either String (ZoomedSZ a b)
 unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = do
   anchor <- makePath syntax aOffset
   focus <- makePath syntax fOffset
@@ -251,6 +274,7 @@ toPreEntityMap :: Map Int String -> PreEntityMap
 toPreEntityMap entityTypes =
   let len = Map.size entityTypes
       lookups = flip map (0 .. (len - 1)) \ix -> Map.lookup ix entityTypes
+      s = sequence lookups
   in PreEntityMap (sequence lookups)
 
 newtype PreEntityMap = PreEntityMap (Maybe (Array String))
@@ -263,22 +287,21 @@ type ContentState =
   , preEntityMap :: PreEntityMap
   }
 
-
-initSelectSyntax :: Fn1 Foreign (Either String ZoomedSZ)
+initSelectSyntax :: Fn1 Foreign (Either String (ZoomedSZ SUnit Int))
 initSelectSyntax = mkFn1 \foreignSelectSyntax -> do
   raw <- lmap show (read foreignSelectSyntax)
   unrawSelectSyntax raw
 
-genContentState :: Fn1 SyntaxZipper Foreign
+genContentState :: Fn1 (SyntaxZipper SUnit Int) Foreign
 genContentState = mkFn1 \zipper ->
   let top = zipUp zipper
       -- TODO why the Justs?
       yieldsContent = contentFromSyntax top.syntax (Just top.anchor) (Just top.focus)
       contentAndKeymapping = evalState yieldsContent 0
-      contentState = blockFromContent (fst contentAndKeymapping)
+      contentState = blockFromContent (contentAndKeymapping.inlines)
   in toForeign contentState
 
-operate :: Fn2 SyntaxZipper Foreign (Either String SyntaxZipper)
+operate :: Fn2 (SyntaxZipper SUnit Int) Foreign (Either String (SyntaxZipper SUnit Int))
 operate = mkFn2 \zipper foreignAction -> do
   action <- lmap show (read foreignAction)
   Operate.operate zipper action
@@ -290,7 +313,7 @@ derive instance genericWrappedAnchorFocus :: Generic WrappedAnchorFocus
 instance foreignWrappedAnchorFocus :: IsForeign WrappedAnchorFocus where
   read = readGeneric myOptions
 
-setEndpoints :: Fn2 SyntaxZipper Foreign (Either String ZoomedSZ)
+setEndpoints :: Fn2 (SyntaxZipper SUnit Int) Foreign (Either String (ZoomedSZ SUnit Int))
 setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   let top = zipUp zipper
   WrappedAnchorFocus {anchor: aOffset, focus: fOffset}
@@ -300,8 +323,8 @@ setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   let zipper' = top {anchor = anchor, focus = focus}
   pure (zoomIn zipper')
 
-listLocalHoles :: Fn1 SyntaxZipper (Array String)
+listLocalHoles :: Fn1 (SyntaxZipper SUnit Int) (Array String)
 listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
 
-listAllHoles :: Fn1 SyntaxZipper (Array String)
+listAllHoles :: Fn1 (SyntaxZipper SUnit Int) (Array String)
 listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)

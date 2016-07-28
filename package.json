@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@kadira/storybook": "^1.28.1",
+    "@kadira/storybook": "^1.41.0",
     "draft-js": "^0.7.0",
     "gulp": "^3.9.1",
     "immutable": "^3.8.1",

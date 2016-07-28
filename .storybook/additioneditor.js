@@ -10,28 +10,34 @@ const onChange = action('onChange');
 
 // (1 + hole)
 const holeHole = {
-  tag: 'plus',
-  l: {
-    tag: 'number',
-    value: 1,
-  },
-  r: {
-    tag: 'hole',
-    name: 'hole',
-  },
+  tag: 'internal',
+  value: '',
+  children: [
+    {
+      tag: 'leaf',
+      value: 1,
+    },
+    {
+      tag: 'hole',
+      value: 'hole',
+    },
+  ]
 };
 
 // (1 + _)
 const emptyHole = {
-  tag: 'plus',
-  l: {
-    tag: 'number',
-    value: 1,
-  },
-  r: {
-    tag: 'hole',
-    name: '_',
-  },
+  tag: 'internal',
+  value: '',
+  children: [
+    {
+      tag: 'leaf',
+      value: 1,
+    },
+    {
+      tag: 'hole',
+      value: '_',
+    },
+  ]
 };
 
 storiesOf('AdditionEditor', module)
@@ -64,15 +70,18 @@ storiesOf('AdditionEditor', module)
   .add('|(1 + 1)', () => {
     const selectSyntax = {
       syntax: {
-        tag: 'plus',
-        l: {
-          tag: 'number',
-          value: 1,
-        },
-        r: {
-          tag: 'number',
-          value: 1,
-        },
+        tag: 'internal',
+        value: '',
+        children: [
+          {
+            tag: 'leaf',
+            value: 1,
+          },
+          {
+            tag: 'leaf',
+            value: 1,
+          },
+        ]
       },
 
       // point to the start of the block
@@ -88,22 +97,28 @@ storiesOf('AdditionEditor', module)
   }).add('|(1| + (2 + 3))', () => {
     const selectSyntax = {
       syntax: {
-        tag: 'plus',
-        l: {
-          tag: 'number',
-          value: 1,
-        },
-        r: {
-          tag: 'plus',
-          l: {
-            tag: 'number',
-            value: 2,
+        tag: 'internal',
+        value: '',
+        children: [
+          {
+            tag: 'leaf',
+            value: 1,
           },
-          r: {
-            tag: 'number',
-            value: 3,
+          {
+            tag: 'internal',
+            value: '',
+            children: [
+              {
+                tag: 'leaf',
+                value: 2,
+              },
+              {
+                tag: 'leaf',
+                value: 3,
+              },
+            ]
           },
-        },
+        ]
       },
 
       // point to the start of the block

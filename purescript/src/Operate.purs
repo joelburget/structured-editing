@@ -8,15 +8,17 @@ import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Generic (class Generic, gShow, gEq)
 import Data.Int as I
 import Data.List ((:))
-import Data.Maybe (Maybe(Just, Nothing), maybe)
+import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length)
 import Data.String as String
-import Data.Tuple (Tuple(Tuple))
 
-import Path (Path(..), (.+), PathStep(..))
-import Syntax (SyntaxZipper, Syntax(..), down)
-import Util.String (isDigit, splice)
+import Path (Path(..), (.+), PathStep)
+import Syntax (SyntaxZipper, Syntax(..), SUnit(..))
+import Util.String (isDigit, spliceStr)
 
+
+stepLeft :: PathStep
+stepLeft = 0
 
 data Action
   = Backspace
@@ -38,17 +40,19 @@ instance actionIsForeign :: IsForeign Action where
       "backspace" -> pure Backspace
       _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
-operate :: SyntaxZipper -> Action -> Either String SyntaxZipper
+type AdditionZipper = SyntaxZipper SUnit Int
+
+operate :: AdditionZipper -> Action -> Either String AdditionZipper
 operate zipper@{anchor, focus} action = if anchor == focus
   then operateAtomic zipper action
   else Left "spanning actions not yet implemented"
 
-operateAtomic :: SyntaxZipper -> Action -> Either String SyntaxZipper
+operateAtomic :: AdditionZipper -> Action -> Either String AdditionZipper
 operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
   | name == "" && isDigit char =
       case I.fromString (String.singleton char) of
         Just n -> Right
-          { syntax: SyntaxNum n
+          { syntax: Leaf n
           , past
           , anchor: z.anchor .+ 1
           , focus: z.anchor .+ 1
@@ -56,12 +60,12 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
         Nothing -> Left "inconsistency: unable to parse after inserting single digit"
   | name == "" && char == '(' = Right
       { syntax: Hole ""
-      , past: Tuple StepLeft (Hole "") : past
+      , past: {value: SUnit, otherChildren: [Hole ""], dir: stepLeft} : past
       , anchor: PathOffset 0
       , focus: PathOffset 0
       }
   | otherwise = Right
-      { syntax: Hole (splice name o 0 (String.singleton char))
+      { syntax: Hole (spliceStr name o 0 (String.singleton char))
       , past
       , anchor: z.anchor .+ 1
       , focus: z.anchor .+ 1
@@ -73,39 +77,39 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} Backspace
   | o == 0 = Left "backspacing out the left of a hole"
   | otherwise
   -- backspace goes left -- splice - 1!
-  = let newName = splice name (o - 1) 1 ""
+  = let newName = spliceStr name (o - 1) 1 ""
     in Right
          { syntax: Hole newName
          , past
          , anchor: z.anchor .+ (-1)
          , focus: z.anchor .+ (-1)
          }
-operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} (Typing char)
+operateAtomic z@{syntax: Leaf n, past, anchor: PathOffset o} (Typing char)
   | char == '-' && o == 0
   = Right
-      { syntax: SyntaxNum (-n)
+      { syntax: Leaf (-n)
       , past
       , anchor: z.anchor .+ 1
       , focus: z.anchor .+ 1
       }
   | isDigit char =
-      case I.fromString (splice (show n) o 0 (String.singleton char)) of
+      case I.fromString (spliceStr (show n) o 0 (String.singleton char)) of
         Just newNum -> Right
-          { syntax: SyntaxNum newNum
+          { syntax: Leaf newNum
           , past
           , anchor: z.anchor .+ 1
           , focus: z.anchor .+ 1
           }
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number (this is almost certainly because the number is larger than 32 bit int allows)"
   | otherwise = Left "inserting non-digit in number"
-operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} Backspace
+operateAtomic z@{syntax: Leaf n, past, anchor: PathOffset o} Backspace
   | o == 0 = Left "backspacing out the left of a number"
   | o > length (show n)
   = Left "inconsistency: backspacing with cursor past end of number"
-  | n >= 10 || n < 0 = case I.fromString (splice (show n) (o - 1) 1 "") of
+  | n >= 10 || n < 0 = case I.fromString (spliceStr (show n) (o - 1) 1 "") of
       -- backspace goes left -- splice - 1!
       Just newNum -> Right
-        { syntax: SyntaxNum newNum
+        { syntax: Leaf newNum
         , past
         , anchor: z.anchor .+ (-1)
         , focus: z.anchor .+ (-1)

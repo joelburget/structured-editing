@@ -34,7 +34,7 @@ const {hasCommandModifier} = KeyBindingUtil;
 // Are they different from holes?
 
 const entityTypes = {
-  number: {
+  leaf: {
     type: 'TOKEN',
     mutability: 'MUTABLE',
     data: {type: 'number'},
@@ -44,7 +44,7 @@ const entityTypes = {
     mutability: 'MUTABLE',
     data: {type: 'hole'},
   },
-  plus: {
+  internal: {
     type: 'TOKEN',
     mutability: 'MUTABLE',
     data: {type: 'plus'},
