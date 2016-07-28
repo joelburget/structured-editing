@@ -15,6 +15,7 @@ import Data.Tuple (Tuple(Tuple))
 
 import Path (Path(..), PathStep(..), toggle)
 
+
 data Syntax
   = SyntaxNum Int
   | Plus Syntax Syntax
@@ -70,7 +71,7 @@ zoomIn zipper@{syntax, past} = case syntax of
   Hole _ -> ZoomedSZ zipper
   Plus left right -> case tryZoomSelection zipper StepLeft of
     -- zoomIn (goLeft zipper)
-    Just {anchor, focus} -> ZoomedSZ
+    Just {anchor, focus} -> zoomIn
       { syntax: left
       , past: Tuple StepLeft right : past
       , anchor
@@ -79,7 +80,7 @@ zoomIn zipper@{syntax, past} = case syntax of
     -- TODO: dedup between this and goLeft / goRight
     -- zoomIn (goRight zipper)
     Nothing -> case tryZoomSelection zipper StepRight of
-      Just {anchor, focus} -> ZoomedSZ
+      Just {anchor, focus} -> zoomIn
         { syntax: right
         , past: Tuple StepRight left : past
         , anchor

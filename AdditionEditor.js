@@ -284,7 +284,7 @@ export class StatefulAdditionEditor extends React.Component {
           opaqueSyntax={opaqueSyntax}
           ref={ref => this.editor = ref}
         />
-        {lastWarning && <h2 style={styles.err}>{lastWarning}</h2>}
+        {lastWarning && <pre style={styles.err}>{lastWarning}</pre>}
       </div>
     );
   }
@@ -295,7 +295,7 @@ const styles = {
     fontFamily: 'monospace',
   },
   err: {
-    borderBottom: '3px solid rgba(255, 112, 0, 0.43)',
+    borderLeft: '3px solid rgba(255, 112, 0, 0.43)',
   },
   number: {
     backgroundColor: 'rgba(0, 0, 255, 0.09)',

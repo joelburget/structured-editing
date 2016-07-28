@@ -121,4 +121,8 @@ operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} Backspace
       , focus: z.anchor .+ (-1)
       }
 
-operateAtomic zipper action = Left $ "had steps remaining at a leaf:\n\n" <> show zipper.syntax <> "\n\n" <> show action
+operateAtomic zipper action = Left $
+  "had steps remaining at a leaf:\n\n" <>
+  show zipper.syntax <> "\n\n" <>
+  show zipper.anchor <> "\n\n" <>
+  show action
