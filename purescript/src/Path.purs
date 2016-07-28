@@ -1,6 +1,6 @@
 module Path where
 
-import Prelude (class Eq, class Show, (==))
+import Prelude
 import Data.Generic
 import Data.Maybe (Maybe(Just, Nothing))
 
@@ -39,3 +39,9 @@ subPath step path = case path of
 pathTail :: Path -> Maybe Path
 pathTail (PathCons _ tail) = Just tail
 pathTail _ = Nothing
+
+pathOffsetNum :: Path -> Int -> Path
+pathOffsetNum (PathOffset i) j = PathOffset (i + j)
+pathOffsetNum (PathCons step rest) j = PathCons step (pathOffsetNum rest j)
+
+infix 4 pathOffsetNum as .+

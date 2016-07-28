@@ -11,7 +11,7 @@ import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length)
 import Data.String as String
 
-import Path (Path(..))
+import Path (Path(..), (.+))
 import Syntax (SyntaxZipper, Syntax(..))
 import Util.String (isDigit, splice)
 
@@ -47,29 +47,29 @@ operate zipper@{anchor, focus} action = if anchor == focus
   else Left "spanning actions not yet implemented"
 
 operateAtomic :: SyntaxZipper -> Action -> Either String SyntaxZipper
-operateAtomic {syntax: Hole name, past, anchor: PathOffset o} (Typing char)
+operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
   | name == "" && isDigit char =
       case I.fromString (String.singleton char) of
         Just n -> Right
           { syntax: SyntaxNum n
           , past
-          , anchor: PathOffset (o + 1)
-          , focus: PathOffset (o + 1)
+          , anchor: z.anchor .+ 1
+          , focus: z.anchor .+ 1
           }
         Nothing -> Left "insonsistency: unable to parse after inserting single digit"
   | name == "" && char == '(' = Right
       { syntax: Plus (Hole "l") (Hole "r")
       , past
-      , anchor: PathOffset (o + 1)
-      , focus: PathOffset (o + 1)
+      , anchor: z.anchor .+ 1
+      , focus: z.anchor .+ 1
       }
   | otherwise = Right
       { syntax: Hole (splice name o 0 (String.singleton char))
       , past
-      , anchor: PathOffset (o + 1)
-      , focus: PathOffset (o + 1)
+      , anchor: z.anchor .+ 1
+      , focus: z.anchor .+ 1
       }
-operateAtomic {syntax: Hole name, past, anchor: PathOffset o} Backspace
+operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} Backspace
   | name == "" = Left "backspacing out of empty hole"
   | o > length name
   = Left "inconsistency: backspacing with cursor past end of hole"
@@ -80,28 +80,28 @@ operateAtomic {syntax: Hole name, past, anchor: PathOffset o} Backspace
     in Right
          { syntax: Hole newName
          , past
-         , anchor: PathOffset (o - 1)
-         , focus: PathOffset (o - 1)
+         , anchor: z.anchor .+ (-1)
+         , focus: z.anchor .+ (-1)
          }
-operateAtomic {syntax: SyntaxNum n, past, anchor: PathOffset o} (Typing char)
+operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} (Typing char)
   | char == '-' && o == 0
   = Right
       { syntax: SyntaxNum (-n)
       , past
-      , anchor: PathOffset (o + 1)
-      , focus: PathOffset (o + 1)
+      , anchor: z.anchor .+ 1
+      , focus: z.anchor .+ 1
       }
   | isDigit char =
       case I.fromString (splice (show n) o 0 (String.singleton char)) of
         Just newNum -> Right
           { syntax: SyntaxNum newNum
           , past
-          , anchor: PathOffset (o + 1)
-          , focus: PathOffset (o + 1)
+          , anchor: z.anchor .+ 1
+          , focus: z.anchor .+ 1
           }
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
   | otherwise = Left "inserting non-digit in number"
-operateAtomic {syntax: SyntaxNum n, past, anchor: PathOffset o} Backspace
+operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} Backspace
   | o == 0 = Left "backspacing out the left of a number"
   | o > length (show n)
   = Left "inconsistency: backspacing with cursor past end of number"
@@ -110,15 +110,15 @@ operateAtomic {syntax: SyntaxNum n, past, anchor: PathOffset o} Backspace
       Just newNum -> Right
         { syntax: SyntaxNum newNum
         , past
-        , anchor: PathOffset (o - 1)
-        , focus: PathOffset (o - 1)
+        , anchor: z.anchor .+ (-1)
+        , focus: z.anchor .+ (-1)
         }
       Nothing -> Left "inconsistency: unable to parse after backspacing in number"
   | otherwise = Right
       { syntax: Hole ""
       , past
-      , anchor: PathOffset (o - 1)
-      , focus: PathOffset (o - 1)
+      , anchor: z.anchor .+ (-1)
+      , focus: z.anchor .+ (-1)
       }
 
 operateAtomic zipper action = Left $ "had steps remaining at a leaf:\n\n" <> show zipper.syntax <> "\n\n" <> show action
