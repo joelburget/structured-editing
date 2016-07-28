@@ -99,7 +99,7 @@ operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} (Typing char)
           , anchor: z.anchor .+ 1
           , focus: z.anchor .+ 1
           }
-        Nothing -> Left "inconsistency: unable to parse after inserting digit in number"
+        Nothing -> Left "inconsistency: unable to parse after inserting digit in number (this is almost certainly because the number is larger than 32 bit int allows)"
   | otherwise = Left "inserting non-digit in number"
 operateAtomic z@{syntax: SyntaxNum n, past, anchor: PathOffset o} Backspace
   | o == 0 = Left "backspacing out the left of a number"
