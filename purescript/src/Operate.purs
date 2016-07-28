@@ -53,7 +53,7 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
           , anchor: z.anchor .+ 1
           , focus: z.anchor .+ 1
           }
-        Nothing -> Left "insonsistency: unable to parse after inserting single digit"
+        Nothing -> Left "inconsistency: unable to parse after inserting single digit"
   | name == "" && char == '(' = Right
       { syntax: Hole ""
       , past: Tuple StepLeft (Hole "") : past
