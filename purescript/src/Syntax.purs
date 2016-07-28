@@ -43,6 +43,11 @@ syntaxSize (SyntaxNum n) = length (show n)
 syntaxSize (Hole name) = length name
 syntaxSize (Plus l r) = 5 + syntaxSize l + syntaxSize r
 
+syntaxHoles :: Syntax -> Array String
+syntaxHoles (SyntaxNum _) = []
+syntaxHoles (Hole name) = [name]
+syntaxHoles (Plus l r) = syntaxHoles l <> syntaxHoles r
+
 type SyntaxZipper =
   { syntax :: Syntax
   , past :: Past

@@ -23,7 +23,7 @@ import Data.Tuple (Tuple(Tuple), fst)
 
 import Operate as Operate
 import Path (Path, PathStep(..), subPath, getOffset)
-import Syntax (ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp)
+import Syntax (ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles)
 import Util.String (whenJust)
 
 
@@ -299,3 +299,9 @@ setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   focus <- makePath top.syntax fOffset
   let zipper' = top {anchor = anchor, focus = focus}
   pure (zoomIn zipper')
+
+listLocalHoles :: Fn1 SyntaxZipper (Array String)
+listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
+
+listAllHoles :: Fn1 SyntaxZipper (Array String)
+listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
