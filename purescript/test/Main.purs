@@ -10,8 +10,9 @@ import Test.Unit.Console (TESTOUTPUT)
 import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
 
-import Syntax
+import Operate
 import Path
+import Syntax
 
 
 onePlusOne :: Syntax
@@ -69,7 +70,7 @@ main = runTest do
           , past: Nil
           }
         )
-        (operateAtomic (SyntaxNum 1) (PathOffset 0) (Typing '2'))
+        (operateAtomic (makeZipper (SyntaxNum 1)) (Typing '2'))
 
       Assert.equal
         (Right
@@ -79,7 +80,7 @@ main = runTest do
           , past: Nil
           }
         )
-        (operateAtomic (Hole "a") (PathOffset 0) (Typing 'b'))
+        (operateAtomic (makeZipper (Hole "a")) (Typing 'b'))
 
     test "inserting in middle" do
       Assert.equal
@@ -89,8 +90,8 @@ main = runTest do
           , focus: PathOffset 3
           , past: Nil
           }
-        ))
-        (operateAtomic (SyntaxNum 124) (PathOffset 2) (Typing '3'))
+        )
+        (operateAtomic (makeZipper (SyntaxNum 124)) (Typing '3'))
 
       Assert.equal
         (Right
@@ -100,11 +101,10 @@ main = runTest do
           , past: Nil
           }
         )
-        (operateAtomic (Hole "acd") (PathOffset 1) (Typing 'b'))
+        (operateAtomic (makeZipper (Hole "acd")) (Typing 'b'))
 
     test "backspacing in middle" do
       Assert.equal
-        (operateAtomic (Hole "abcd") (PathOffset 2) Backspace)
         (Right
           { syntax: Hole "acd"
           , anchor: PathOffset 1
@@ -112,9 +112,9 @@ main = runTest do
           , past: Nil
           }
         )
+        (operateAtomic (makeZipper (Hole "abcd")) Backspace)
 
       Assert.equal
-        (operateAtomic (SyntaxNum 1234) (PathOffset 2) Backspace)
         (Right
           { syntax: SyntaxNum 134
           , anchor: PathOffset 1
@@ -122,10 +122,10 @@ main = runTest do
           , past: Nil
           }
         )
+        (operateAtomic (makeZipper (SyntaxNum 1234)) Backspace)
 
     test "backspacing negative number" do
       Assert.equal
-        (operateAtomic (SyntaxNum (-1)) (PathOffset 1) Backspace)
         (Right
           { syntax: SyntaxNum 1
           , anchor: PathOffset 0
@@ -133,3 +133,4 @@ main = runTest do
           , past: Nil
           }
         )
+        (operateAtomic (makeZipper (SyntaxNum (-1))) Backspace)
