@@ -24,6 +24,7 @@ import Data.Traversable (sequence)
 import Operate as Operate
 import Path (Path, PathStep, subPath, getOffset)
 import Syntax (SUnit, ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles)
+import Template
 import Util.String (whenJust, iForM)
 
 
@@ -32,17 +33,6 @@ type EntityRange =
   , length :: Int
   , key :: Int
   }
-
-type LightInline =
-  { ty :: LightInlineType
-  , key :: Int
-  , content :: String
-  , info :: InlineInfo
-  }
-
-data LightInlineType = InlineInternal | InlineLeaf | InlineHole | InlineConflict
-
-type InlineInfo = { anchor :: Maybe Int , focus :: Maybe Int }
 
 newtype BlockKey = BlockKey String
 newtype EntityKey = EntityKey String
@@ -135,27 +125,6 @@ blockFromContent inlines =
                   }
      , preEntityMap: toPreEntityMap finalState.preEntityMap
      }
-
-inlineSelection :: Int -> Int -> Maybe Int -> Maybe Int -> InlineInfo
-inlineSelection start len anchorOffset focusOffset =
-  let f offset = case offset of
-        Just n -> if start <= n && n <= start + len
-                     then Just (n - start)
-                     else Nothing
-        Nothing -> Nothing
-  in { anchor: f anchorOffset
-     , focus: f focusOffset
-     }
-
-plusTemplate :: Int -> Maybe Int -> Maybe Int -> Array LightInline -> Either String (Array LightInline)
-plusTemplate key anchorOffset focusOffset [l, r] = Right
-  [ {ty: InlineInternal, key, content: "(", info: inlineSelection 0 1 anchorOffset focusOffset}
-  , l
-  , {ty: InlineInternal, key, content: " + ", info: inlineSelection 1 3 anchorOffset focusOffset}
-  , r
-  , {ty: InlineInternal, key, content: ")", info: inlineSelection 4 1 anchorOffset focusOffset}
-  ]
-plusTemplate _ _ _ arr = Left $ "inconsistency: plus template expected two children, received " <> show (Array.length arr)
 
 contentFromSyntax :: forall a b. Show b
                   => (Syntax a b)
@@ -264,7 +233,7 @@ instance rawSelectSyntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Ra
       }
       )
 
-unrawSelectSyntax :: forall a b. RawSelectSyntax a b -> Either String (ZoomedSZ a b)
+unrawSelectSyntax :: forall a b. Show b => RawSelectSyntax a b -> Either String (ZoomedSZ a b)
 unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = do
   anchor <- makePath syntax aOffset
   focus <- makePath syntax fOffset

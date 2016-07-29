@@ -2,28 +2,42 @@ module Syntax where
 
 import Prelude
 
+import Control.Monad.Except
+import Control.Monad.State (State, modify, get, evalState, evalStateT, runState)
 import Data.Array.Partial (unsafeIndex)
-import Data.Bifunctor (lmap)
+import Data.Bifunctor (lmap, rmap)
 import Data.Either (Either(..))
 import Data.Foreign (ForeignError(JSONError))
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Generic (class Generic, gShow, gEq)
-import Data.List as List
 import Data.List (List, (:), uncons)
+import Data.List as List
 import Data.Maybe (Maybe(..), maybe)
--- import Data.String (length)
+import Data.String (length)
+import Data.Tuple
 import Partial.Unsafe (unsafePartial)
 
 import Path (Path(..), PathStep, pathHead)
-import Util.String (spliceArr)
+import Template
+import Util.String (spliceArr, iForM)
 
 
+-- "syntax unit"
 data SUnit = SUnit
 derive instance genericSUnit :: Generic SUnit
 instance showSUnit :: Show SUnit where show = gShow
 instance eqSUnit :: Eq SUnit where eq = gEq
 instance foreignSUnit :: IsForeign SUnit where read _ = pure SUnit
+
+throwE :: forall e m a. Applicative m => e -> ExceptT e m a
+throwE = ExceptT <<< pure <<< Left
+
+throwL :: forall e1 e2 m a. Applicative m => e1 -> ExceptT (Either e1 e2) m a
+throwL = ExceptT <<< pure <<< Left <<< Left
+
+throwR :: forall e1 e2 m a. Applicative m => e2 -> ExceptT (Either e1 e2) m a
+throwR = ExceptT <<< pure <<< Left <<< Right
 
 data Syntax internal leaf
   = Internal internal (Array (Syntax internal leaf))
@@ -141,45 +155,66 @@ editFocus :: forall a b. (Syntax a b -> Syntax a b) -> SyntaxZipper a b -> Synta
 editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 
-makePath :: forall a b. Syntax a b -> Int -> Either String Path
-makePath syntax n = lmap
-  (\c -> "makePath overflow: " <>
-    show n <> " demanded, " <> show c <> " consumed")
-  (consumePath syntax n)
-  where
-    -- keep moving in to the outermost syntax holding this offset
-    -- either give back the resulting path or the number of chars
-    -- consumed
-    consumePath :: Syntax a b -> Int -> Either Int Path
-    consumePath _ 0 = Right (PathOffset 0)
-    consumePath _ _ = Right (PathOffset 1)
-    -- consumePath (SyntaxNum n) offset =
-    --   let nlen = length (show n)
-    --   in if offset <= nlen
-    --      then Right (PathOffset offset)
-    --      else Left nlen
+makePath :: forall a b. Show b => Syntax a b -> Int -> Either String Path
+makePath syntax n =
+  let z = (runExceptT (consumePath syntax n))
+      y :: Tuple (Either (Either String Path) Unit) Int
+      y = runState z 0
+  in case y of
+       Tuple (Left x) _ -> x
+       Tuple (Right _) c -> Left $ "makePath overflow: " <>
+         show n <> " demanded, " <> show c <> " consumed"
 
-    -- -- pretty much identical
-    -- consumePath (Hole name) offset =
-    --   let namelen = length name
-    --   in if offset <= namelen
-    --      then Right (PathOffset offset)
-    --      else Left namelen
 
-    -- -- ([left] + [right])
-    -- --
-    -- -- TODO automate this kind of offset calculation
-    -- consumePath (Plus l r) offset =
-    --   case consumePath l (offset - 1) of
-    --     Right path -> Right (PathCons StepLeft path)
-    --     Left consumed ->
-    --       let offset' = offset - (consumed + 1)
-    --       in if offset' < 3
-    --          then Right (PathOffset (offset' + 1))
-    --          else case consumePath r (offset' - 3) of
-    --                 Right path -> Right (PathCons StepRight path)
-    --                 Left consumed' ->
-    --                   let subConsumed = consumed + consumed'
-    --                   in if offset - subConsumed <= 5
-    --                      then Right (PathOffset (offset - subConsumed))
-    --                      else Left (subConsumed + 5)
+-- keep moving in to the outermost syntax holding this offset
+-- either give back the resulting path or the number of chars
+-- consumed
+consumePath :: forall a b. Show b => Syntax a b -> Int -> ExceptT (Either String Path) (State Int) Unit
+consumePath _ 0 = throwR (PathOffset 0)
+consumePath (Leaf n) offset =
+  let nlen = length (show n)
+  in if offset <= nlen
+     then throwR (PathOffset offset)
+     else modify (_ + nlen)
+
+-- TODO pretty much identical to prev -- reduce duplication
+consumePath (Hole name) offset =
+  let namelen = length name
+  in if offset <= namelen
+     then throwR (PathOffset offset)
+     else modify (_ +  namelen)
+
+consumePath (Internal _ children) offset = do
+  -- XXX hardcode for now
+  -- arr :: Array (Either String Syntax)
+  arr <- case zipTemplate additionTemplate children of
+           Nothing -> throwL "couldn't zip!"
+           Just arr -> pure arr
+
+  -- state monad to track how much we've consumed
+  -- except to give back result
+  iForM arr \ix child -> case child of
+    Left str -> do
+      let len = length str
+      offset <- get
+      if len >= offset
+        then throwR (PathOffset (len + offset))
+        else modify (_ + len)
+    Right childSyn -> do
+      withExceptT (rmap (PathCons ix)) (consumePath childSyn offset)
+
+  pure unit
+
+-- {[left] vs [right]}
+consumePath (Conflict left right) offset = do
+  let checkAndModify str = do
+        let len = length str
+        i <- get
+        when (i <= len) (throwR (PathOffset i))
+        modify (_ + len) -- "}"
+
+  checkAndModify "}"
+  withExceptT (rmap (PathCons 0)) (consumePath left offset)
+  checkAndModify " vs "
+  withExceptT (rmap (PathCons 1)) (consumePath right offset)
+  checkAndModify "}"

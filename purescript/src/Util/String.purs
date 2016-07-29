@@ -1,4 +1,4 @@
-module Util.String (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM) where
+module Util.String (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM) where
 
 import Prelude
 import Control.Monad.State (modify, get, evalState, evalStateT)
@@ -30,3 +30,6 @@ iForM as f = flip evalStateT 0 $ flip traverse as \a -> do
   i <- get
   modify (_ + 1)
   lift $ f i a
+
+forM :: forall a b m t. (Traversable t, Applicative m) => t a -> (a -> m b) -> m (t b)
+forM = flip traverse
