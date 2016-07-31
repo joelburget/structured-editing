@@ -25,7 +25,7 @@ import Operate as Operate
 import Path (Path, PathStep, subPath, getOffset)
 import Syntax (SUnit, ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles)
 import Template
-import Util.String (whenJust, iForM)
+import Util.String
 
 
 type EntityRange =
@@ -135,7 +135,7 @@ contentFromSyntax syntax anchor focus = do
   let anchorOffset = getOffset anchor
       focusOffset = getOffset focus
   myId <- get
-  modify (_+1)
+  modify (_ + 1)
   case syntax of
     Internal _ children -> do
       -- TODO -- returning this way causes us to traverse the array twice later
@@ -147,10 +147,10 @@ contentFromSyntax syntax anchor focus = do
           }
 
       -- XXX
-      let preInlines = plusTemplate myId anchorOffset focusOffset (concatMap _.inlines children')
+      let preInlines = plusTemplate myId anchorOffset focusOffset (map _.inlines children')
       let inlines = case preInlines of
-            Right x -> x
-            Left _ -> []
+            Just x -> x
+            Nothing -> []
 
       let ids = Map.insert myId [] (Map.unions (map _.ids children'))
       pure {inlines, ids}
@@ -239,14 +239,16 @@ unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = 
   focus <- makePath syntax fOffset
   pure (zoomIn {syntax, past: List.Nil, anchor, focus})
 
+-- TODO test case where incoming map is empty
 toPreEntityMap :: Map Int String -> PreEntityMap
 toPreEntityMap entityTypes =
   let len = Map.size entityTypes
       lookups = flip map (0 .. (len - 1)) \ix -> Map.lookup ix entityTypes
-      s = sequence lookups
   in PreEntityMap (sequence lookups)
 
 newtype PreEntityMap = PreEntityMap (Maybe (Array String))
+instance showPEM :: Show PreEntityMap where
+  show (PreEntityMap m) = show m
 
 
 type ContentState =
