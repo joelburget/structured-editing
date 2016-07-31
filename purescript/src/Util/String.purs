@@ -1,10 +1,12 @@
-module Util.String (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM) where
+module Util.String (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM, traceShowId, traceAnyId, traceLabelShowId, traceLabelAnyId) where
 
 import Prelude
 import Control.Monad.State (modify, get, evalState, evalStateT)
 import Control.Monad.Trans (lift)
 import Data.Maybe (Maybe(..))
 import Data.Traversable
+
+import Debug.Trace
 
 -- yeah, i know this isn't a string function
 isDigit :: Char -> Boolean
@@ -33,3 +35,15 @@ iForM as f = flip evalStateT 0 $ flip traverse as \a -> do
 
 forM :: forall a b m t. (Traversable t, Applicative m) => t a -> (a -> m b) -> m (t b)
 forM = flip traverse
+
+traceShowId :: forall a. Show a => a -> a
+traceShowId a = traceShow a \_ -> a
+
+traceAnyId :: forall a. a -> a
+traceAnyId a = traceAny a \_ -> a
+
+traceLabelShowId :: forall a. Show a => String -> a -> a
+traceLabelShowId label a = trace (label <> ": " <> show a) \_ -> a
+
+traceLabelAnyId :: forall a. String -> a -> a
+traceLabelAnyId label a = trace (label <> ": ") \_ -> traceAny a \_ -> a
