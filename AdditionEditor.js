@@ -157,10 +157,10 @@ export class AdditionEditor extends React.Component {
   // to only handle selection changes here. Should seek for clarity re which
   // events can trigger this code path.
   _handleRawChange(editorState) {
-    const selection = editorState.getSelection()
+    const selection = editorState.getSelection();
     const anchor = selection.getAnchorOffset();
     const focus = selection.getFocusOffset();
-    this.props.onMoveCursor({anchor, focus})
+    this.props.onMoveCursor({anchor, focus});
   }
 
   render() {
@@ -215,7 +215,7 @@ export class AdditionEditor extends React.Component {
 }
 
 function handleEither(either, left, right) {
-  either.constructor.name === 'Left'
+  return either.constructor.name === 'Left'
     ? left(either.value0)
     : right(either.value0);
 }
@@ -224,25 +224,33 @@ export class StatefulAdditionEditor extends React.Component {
   constructor({onChange, selectSyntax}) {
     super();
 
-    handleEither(
+    this.state = this._getState(selectSyntax);
+
+    this.onChange = command => this._onChange(command);
+    this.handleMoveCursor = anchorFocus => this._handleMoveCursor(anchorFocus);
+  }
+
+  componentWillReceiveProps({selectSyntax}) {
+    this.setState(this._getState(selectSyntax));
+  }
+
+  _getState(selectSyntax) {
+    return handleEither(
       initSelectSyntax(selectSyntax),
       lastWarning => {
-        this.state = {
+        return {
           // TODO we don't actually handle the case when opaqueSyntax is null
           opaqueSyntax: null,
           lastWarning,
         };
       },
       opaqueSyntax => {
-        this.state = {
+        return {
           opaqueSyntax,
           lastWarning: null,
         };
       }
     );
-
-    this.onChange = command => this._onChange(command);
-    this.handleMoveCursor = anchorFocus => this._handleMoveCursor(anchorFocus);
   }
 
   _onChange(command) {

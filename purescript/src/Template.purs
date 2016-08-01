@@ -1,17 +1,22 @@
 module Template where
 
 import Prelude
-
-import Data.Array ((:))
 import Data.Array as Array
+import Data.Array ((:), filter)
 import Data.Either (Either(..))
+import Data.Generic (class Generic, gShow, gEq)
 import Data.Maybe (Maybe(..))
 import Data.String (length, split)
 import Data.Traversable (Accum, mapAccumL, sequence)
 
+
 data TemplatePiece
   = TemplateHole
   | TemplateStr String
+
+derive instance genericTemplatePiece :: Generic TemplatePiece
+instance showTemplatePiece :: Show TemplatePiece where show = gShow
+instance eqTemplatePiece :: Eq TemplatePiece where eq = gEq
 
 type Template = Array TemplatePiece
 
@@ -31,6 +36,9 @@ type LightInline =
   }
 
 data LightInlineType = InlineInternal | InlineLeaf | InlineHole | InlineConflict
+derive instance genericLightInlineType :: Generic LightInlineType
+instance showLightInlineType :: Show LightInlineType where show = gShow
+instance eqLightInlineType :: Eq LightInlineType where eq = gEq
 
 ------ PARSERS
 
@@ -43,7 +51,7 @@ intersperse a lst = case lst of
 
 -- TODO are named template holes useful?
 mkTemplate :: String -> Template
-mkTemplate = split "{}" >>> map TemplateStr >>> intersperse TemplateHole
+mkTemplate = split "{}" >>> map TemplateStr >>> intersperse TemplateHole >>> filter (_ /= TemplateStr "")
 
 ------
 
@@ -53,24 +61,45 @@ additionTemplate = mkTemplate "{} + {}"
 parensTemplate :: Template
 parensTemplate = mkTemplate "({})"
 
-type AccumState = {fillers :: Array LightInline, pos :: Int}
+type AccumState = {fillers :: Array (Array LightInline), pos :: Int}
 
-interpolateTemplate :: Template -> TemplateMeta -> Array LightInline -> Maybe (Array LightInline)
+interpolateTemplate :: Template
+                    -> TemplateMeta
+                    -> Array (Array LightInline)
+                    -> Maybe (Array LightInline)
 interpolateTemplate template {key, anchorOffset, focusOffset} fillers =
-  let mkPiece :: Int -> String -> LightInline
-      mkPiece start content = {ty: InlineInternal, key, content, info: inlineSelection start (length content) anchorOffset focusOffset}
-      go :: AccumState -> TemplatePiece -> Accum AccumState (Maybe LightInline)
-      go accum piece = case Array.uncons accum.fillers of
-        Just {head, tail} -> case piece of
-          TemplateHole -> {accum: {fillers: tail, pos: accum.pos}, value: Just head}
-          _            -> {accum, value: Nothing}
-        Nothing -> case piece of
-          TemplateStr str -> {accum: {fillers: accum.fillers, pos: accum.pos + length str}, value: Just (mkPiece accum.pos str)}
-          _               -> {accum, value: Nothing}
+  let mkPiece :: Int -> String -> Array LightInline
+      mkPiece start content = pure
+        { ty: InlineInternal
+        , key
+        , content
+        , info: inlineSelection start (length content) anchorOffset focusOffset
+        }
+
+      go :: AccumState
+         -> TemplatePiece
+         -> Accum AccumState (Maybe (Array LightInline))
+      go accum piece = case piece of
+        TemplateHole -> case Array.uncons accum.fillers of
+          Just {head, tail} -> 
+            {accum: {fillers: tail, pos: accum.pos}, value: Just head}
+          -- fail because we couldn't find a string to fill the hole
+          Nothing ->
+            {accum, value: Nothing}
+        TemplateStr str -> 
+          { accum: {fillers: accum.fillers, pos: accum.pos + length str}
+          , value: Just (mkPiece accum.pos str)
+          }
+
       result = mapAccumL go {fillers, pos: 0} template
+
   in case result.accum.fillers of
        -- there shouldn't be any leftovers
-       [] -> sequence result.value
+       [] -> do
+         -- result.value :: Array (Maybe (Array LightInline))
+         val <- sequence result.value
+         pure (join val)
+         -- sequence result.value
        _ -> Nothing
 
 
@@ -98,12 +127,6 @@ inlineSelection start len anchorOffset focusOffset =
      , focus: f focusOffset
      }
 
-plusTemplate :: Int -> Maybe Int -> Maybe Int -> Array LightInline -> Either String (Array LightInline)
-plusTemplate key anchorOffset focusOffset [l, r] = Right
-  [ {ty: InlineInternal, key, content: "(", info: inlineSelection 0 1 anchorOffset focusOffset}
-  , l
-  , {ty: InlineInternal, key, content: " + ", info: inlineSelection 1 3 anchorOffset focusOffset}
-  , r
-  , {ty: InlineInternal, key, content: ")", info: inlineSelection 4 1 anchorOffset focusOffset}
-  ]
-plusTemplate _ _ _ arr = Left $ "inconsistency: plus template expected two children, received " <> show (Array.length arr)
+plusTemplate :: Int -> Maybe Int -> Maybe Int -> Array (Array LightInline) -> Maybe (Array LightInline)
+plusTemplate key anchorOffset focusOffset fillers =
+  interpolateTemplate additionTemplate {key, anchorOffset, focusOffset} fillers

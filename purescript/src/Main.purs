@@ -177,7 +177,7 @@ contentFromSyntax syntax anchor focus = do
           {-- {ty: InlineConflict, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset} --}
           ]
           ids = Map.singleton myId []
-     in pure {inlines, ids}
+      in pure {inlines, ids}
 
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
