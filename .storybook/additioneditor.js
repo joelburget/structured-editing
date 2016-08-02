@@ -8,7 +8,7 @@ const onChange = action('onChange');
 
 // }
 
-// (1 + hole)
+// 1 + hole
 const holeHole = {
   tag: 'internal',
   value: '',
@@ -24,7 +24,7 @@ const holeHole = {
   ]
 };
 
-// (1 + _)
+// 1 + _
 const emptyHole = {
   tag: 'internal',
   value: '',
@@ -41,11 +41,11 @@ const emptyHole = {
 };
 
 storiesOf('AdditionEditor', module)
-  .add('(1 + hole|)', () => {
+  .add('1 + hole|', () => {
     const selectSyntax = {
       syntax: holeHole,
-      anchor: 9,
-      focus: 9,
+      anchor: 8,
+      focus: 8,
     };
     return (
       <StatefulAdditionEditor
@@ -54,11 +54,11 @@ storiesOf('AdditionEditor', module)
       />
     );
   })
-  .add('(1 + _|)', () => {
+  .add('1 + _|', () => {
     const selectSyntax = {
       syntax: emptyHole,
-      anchor: 6,
-      focus: 6,
+      anchor: 5,
+      focus: 5,
     };
     return (
       <StatefulAdditionEditor
@@ -67,7 +67,7 @@ storiesOf('AdditionEditor', module)
       />
     );
   })
-  .add('|(1 + 1)', () => {
+  .add('|1 + 1', () => {
     const selectSyntax = {
       syntax: {
         tag: 'internal',
@@ -94,7 +94,7 @@ storiesOf('AdditionEditor', module)
         selectSyntax={selectSyntax}
       />
     );
-  }).add('|(1| + (2 + 3))', () => {
+  }).add('|1| + 2 + 3', () => {
     const selectSyntax = {
       syntax: {
         tag: 'internal',
@@ -123,7 +123,7 @@ storiesOf('AdditionEditor', module)
 
       // point to the start of the block
       anchor: 0,
-      focus: 2,
+      focus: 1,
     };
     return (
       <StatefulAdditionEditor

@@ -18,9 +18,9 @@ import Data.String (length)
 import Data.Tuple
 import Partial.Unsafe (unsafePartial)
 
-import Path (Path(..), PathStep, pathHead)
+import Path (Path(..), PathStep, pathHead, pathUncons)
 import Template
-import Util.String (spliceArr, forM)
+import Util.String
 
 
 -- "syntax unit"
@@ -90,18 +90,23 @@ zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
   Conflict _ _ -> ZoomedSZ zipper
   Internal value children ->
     if pathHead anchor == pathHead focus
-    then case pathHead anchor of
-            Just dir -> zoomIn
+    then
+      let go = do
+            {head: dir, tail: aTail} <- pathUncons anchor
+            {tail: fTail} <- pathUncons focus
+            pure $ zoomIn
               { syntax: unsafePartial (unsafeIndex children dir)
               , past:
                 { value
                 , otherChildren: spliceArr children dir 1 []
                 , dir
                 } : past
-              , anchor
-              , focus
+              , anchor: aTail
+              , focus: fTail
               }
-            _ -> ZoomedSZ zipper
+      in case go of
+           Just zoomed -> zoomed
+           Nothing -> ZoomedSZ zipper
     else ZoomedSZ zipper
 
 getTree :: forall a b. SyntaxZipper a b -> Syntax a b
@@ -203,7 +208,7 @@ consumePath (Internal _ children) = do
       if offset <= len
         then throwR (PathOffset offset)
         else modify (_ - len)
-    Right (Tuple childSyn ix) -> do
+    Right (Tuple childSyn ix) ->
       withExceptT (rmap (PathCons ix)) (consumePath childSyn)
 
   pure unit

@@ -36,6 +36,10 @@ pathTail :: Path -> Maybe Path
 pathTail (PathCons _ tail) = Just tail
 pathTail _ = Nothing
 
+pathUncons :: Path -> Maybe {head :: PathStep, tail :: Path}
+pathUncons (PathOffset _) = Nothing
+pathUncons (PathCons head tail) = Just {head, tail}
+
 pathOffsetNum :: Path -> Int -> Path
 pathOffsetNum (PathOffset i) j = PathOffset (i + j)
 pathOffsetNum (PathCons step rest) j = PathCons step (pathOffsetNum rest j)
