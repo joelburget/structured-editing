@@ -18,7 +18,14 @@ import type {
   RawDraftContentBlock,
 } from 'draft-js';
 
-import {listAllHoles, operate, genContentState, initSelectSyntax, setEndpoints} from './purescript/output/Main/index.js';
+import {
+  selectionInfo,
+  listAllHoles,
+  operate,
+  genContentState,
+  initSelectSyntax,
+  setEndpoints,
+} from './purescript/output/Main/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
@@ -194,6 +201,9 @@ export class AdditionEditor extends React.Component {
     const holes = listAllHoles(this.props.opaqueSyntax)
       .map(name => <li>{name}</li>);
 
+    const {anchorInfo, focusInfo, evaluated} =
+      selectionInfo(this.props.opaqueSyntax);
+
     return (
       <div style={styles.root}>
         <h3>editor</h3>
@@ -205,6 +215,10 @@ export class AdditionEditor extends React.Component {
           keyBindingFn={additionKeyBindingFn}
           onChange={this.handleRawChange}
         />
+        <h3>info</h3>
+        <p>{anchorInfo}</p>
+        <p>{focusInfo}</p>
+        <p>{evaluated}</p>
         <h3>holes</h3>
         <ul>
           {holes}

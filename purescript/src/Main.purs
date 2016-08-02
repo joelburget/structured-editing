@@ -7,7 +7,7 @@ import Control.Monad.State (State, modify, get, evalState, execState)
 import Data.Array ((:), concatMap, snoc, (..))
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
@@ -23,7 +23,7 @@ import Data.Traversable (sequence)
 
 import Operate as Operate
 import Path (Path, PathStep, subPath, getOffset)
-import Syntax (SUnit, ZoomedSZ, SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles)
+import Syntax (SUnit, ZoomedSZ(ZoomedSZ), SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
 import Template
 import Util.String
 
@@ -299,3 +299,30 @@ listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
 
 listAllHoles :: Fn1 (SyntaxZipper SUnit Int) (Array String)
 listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
+
+type SelectionInfo =
+  { anchorInfo :: String
+  , focusInfo :: String
+  , evaluated :: String
+  }
+
+evaluateSelection :: Syntax SUnit Int -> Either String Int
+evaluateSelection (Internal _ children) = foldl (+) (Right 0) (map evaluateSelection children)
+evaluateSelection (Leaf i) = Right i
+evaluateSelection (Hole str) = Left $ "found hole " <> str
+evaluateSelection (Conflict _ _) = Left "found conflict"
+
+selectionInfo :: Fn1 (SyntaxZipper SUnit Int) SelectionInfo
+selectionInfo = mkFn1 \z ->
+  if z.anchor == z.focus
+  then let anchorInfo = show (followPath z.syntax z.anchor)
+       in { anchorInfo
+          , focusInfo: anchorInfo
+          , evaluated: either id show (evaluateSelection z.syntax)
+          }
+  else case zoomIn z of
+         ZoomedSZ zz ->
+           { anchorInfo: show (followPath z.syntax z.anchor)
+           , focusInfo: show (followPath z.syntax z.focus)
+           , evaluated: either id show (evaluateSelection z.syntax)
+           }

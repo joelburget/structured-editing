@@ -1,8 +1,11 @@
 module Syntax where
 
 import Prelude
-
 import Control.Monad.Except
+import Data.Tuple
+import Template
+import Util.String
+import Data.List as List
 import Control.Monad.State (State, modify, get, evalState, evalStateT, runState)
 import Data.Array.Partial (unsafeIndex)
 import Data.Bifunctor (lmap, rmap)
@@ -12,15 +15,10 @@ import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Generic (class Generic, gShow, gEq)
 import Data.List (List, (:), uncons)
-import Data.List as List
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (length)
-import Data.Tuple
 import Partial.Unsafe (unsafePartial)
-
 import Path (Path(..), PathStep, pathHead, pathUncons)
-import Template
-import Util.String
 
 
 -- "syntax unit"
@@ -82,6 +80,15 @@ type Past a b = List (ZipperStep a b)
 -- is rendered by a child then it isn't.
 makeZipper :: forall a b. Syntax a b -> SyntaxZipper a b
 makeZipper syntax = {syntax, past: List.Nil, anchor: PathOffset 0, focus: PathOffset 0}
+
+followPath :: forall a b. Syntax a b -> Path -> Syntax a b
+followPath syntax path = case syntax of
+  Leaf _ -> syntax
+  Hole _ -> syntax
+  Conflict _ _ -> syntax
+  Internal value children -> case path of
+    PathCons dir tail -> followPath (unsafePartial (unsafeIndex children dir)) tail
+    PathOffset _ -> syntax
 
 zoomIn :: forall a b. SyntaxZipper a b -> ZoomedSZ a b
 zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
