@@ -20,7 +20,7 @@ import Partial.Unsafe (unsafePartial)
 
 import Path (Path(..), PathStep, pathHead)
 import Template
-import Util.String (spliceArr, iForM)
+import Util.String (spliceArr, forM)
 
 
 -- "syntax unit"
@@ -157,9 +157,9 @@ editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 makePath :: forall a b. Show b => Syntax a b -> Int -> Either String Path
 makePath syntax n =
-  let z = (runExceptT (consumePath syntax n))
+  let z = (runExceptT (consumePath syntax))
       y :: Tuple (Either (Either String Path) Unit) Int
-      y = runState z 0
+      y = runState z n
   in case y of
        Tuple (Left x) _ -> x
        Tuple (Right _) c -> Left $ "makePath overflow: " <>
@@ -169,22 +169,25 @@ makePath syntax n =
 -- keep moving in to the outermost syntax holding this offset
 -- either give back the resulting path or the number of chars
 -- consumed
-consumePath :: forall a b. Show b => Syntax a b -> Int -> ExceptT (Either String Path) (State Int) Unit
-consumePath _ 0 = throwR (PathOffset 0)
-consumePath (Leaf n) offset =
+consumePath :: forall a b. Show b
+            => Syntax a b
+            -> ExceptT (Either String Path) (State Int) Unit
+consumePath (Leaf n) = do
+  offset <- get
   let nlen = length (show n)
-  in if offset <= nlen
+  if offset <= nlen
      then throwR (PathOffset offset)
-     else modify (_ + nlen)
+     else modify (_ - nlen)
 
 -- TODO pretty much identical to prev -- reduce duplication
-consumePath (Hole name) offset =
+consumePath (Hole name) = do
+  offset <- get
   let namelen = length name
-  in if offset <= namelen
+  if offset <= namelen
      then throwR (PathOffset offset)
-     else modify (_ +  namelen)
+     else modify (_ - namelen)
 
-consumePath (Internal _ children) offset = do
+consumePath (Internal _ children) = do
   -- XXX hardcode for now
   -- arr :: Array (Either String Syntax)
   arr <- case zipTemplate additionTemplate children of
@@ -193,20 +196,20 @@ consumePath (Internal _ children) offset = do
 
   -- state monad to track how much we've consumed
   -- except to give back result
-  iForM arr \ix child -> case child of
+  forM arr \child -> case child of
     Left str -> do
       let len = length str
       offset <- get
-      if len >= offset
-        then throwR (PathOffset (len + offset))
-        else modify (_ + len)
-    Right childSyn -> do
-      withExceptT (rmap (PathCons ix)) (consumePath childSyn offset)
+      if offset <= len
+        then throwR (PathOffset offset)
+        else modify (_ - len)
+    Right (Tuple childSyn ix) -> do
+      withExceptT (rmap (PathCons ix)) (consumePath childSyn)
 
   pure unit
 
 -- {[left] vs [right]}
-consumePath (Conflict left right) offset = do
+consumePath (Conflict left right) = do
   let checkAndModify str = do
         let len = length str
         i <- get
@@ -214,7 +217,7 @@ consumePath (Conflict left right) offset = do
         modify (_ + len) -- "}"
 
   checkAndModify "}"
-  withExceptT (rmap (PathCons 0)) (consumePath left offset)
+  withExceptT (rmap (PathCons 0)) (consumePath left)
   checkAndModify " vs "
-  withExceptT (rmap (PathCons 1)) (consumePath right offset)
+  withExceptT (rmap (PathCons 1)) (consumePath right)
   checkAndModify "}"

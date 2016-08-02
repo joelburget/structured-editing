@@ -146,7 +146,7 @@ contentFromSyntax syntax anchor focus = do
           , ids: (i:_) <$> childIds
           }
 
-      -- XXX
+      -- XXX should be able to actually fail here
       let preInlines = plusTemplate myId anchorOffset focusOffset (map _.inlines children')
       let inlines = case preInlines of
             Just x -> x

@@ -8,6 +8,7 @@ import Data.Generic (class Generic, gShow, gEq)
 import Data.Maybe (Maybe(..))
 import Data.String (length, split)
 import Data.Traversable (Accum, mapAccumL, sequence)
+import Data.Tuple
 
 
 data TemplatePiece
@@ -103,16 +104,25 @@ interpolateTemplate template {key, anchorOffset, focusOffset} fillers =
        _ -> Nothing
 
 
-zipTemplate :: forall a. Template -> Array a -> Maybe (Array (Either String a))
+type ZipTemplateAccum a = {fillers :: Array a, ix :: Int}
+
+zipTemplate :: forall a. Template
+            -> Array a
+            -> Maybe (Array (Either String (Tuple a Int)))
 zipTemplate template fillers =
-   let go :: Array a -> TemplatePiece -> Accum (Array a) (Maybe (Either String a))
-       go accum TemplateHole = case Array.uncons accum of
-         Just {head, tail} -> {accum: tail, value: Just (Right head)}
+   let go :: ZipTemplateAccum a
+          -> TemplatePiece
+          -> Accum (ZipTemplateAccum a) (Maybe (Either String (Tuple a Int)))
+       go accum TemplateHole = case Array.uncons accum.fillers of
+         Just {head, tail} ->
+           let accum' = {fillers: tail, ix: accum.ix + 1}
+           in {accum: accum', value: Just (Right (Tuple head accum.ix))}
          Nothing -> {accum, value: Nothing}
        go accum (TemplateStr str) = {accum, value: Just (Left str)}
-       result = mapAccumL go fillers template
+       ix = 0
+       result = mapAccumL go {fillers, ix} template
    in case result.accum of
-        [] -> sequence result.value
+        {fillers: []} -> sequence result.value
         _ -> Nothing
 
 
@@ -127,6 +137,10 @@ inlineSelection start len anchorOffset focusOffset =
      , focus: f focusOffset
      }
 
-plusTemplate :: Int -> Maybe Int -> Maybe Int -> Array (Array LightInline) -> Maybe (Array LightInline)
+plusTemplate :: Int
+             -> Maybe Int
+             -> Maybe Int
+             -> Array (Array LightInline)
+             -> Maybe (Array LightInline)
 plusTemplate key anchorOffset focusOffset fillers =
   interpolateTemplate additionTemplate {key, anchorOffset, focusOffset} fillers
