@@ -10,7 +10,7 @@ import Control.Monad.State (State, modify, get, evalState, evalStateT, runState)
 import Data.Array.Partial (unsafeIndex)
 import Data.Bifunctor (lmap, rmap)
 import Data.Either (Either(..))
-import Data.Foreign (ForeignError(JSONError))
+import Data.Foreign (ForeignError(JSONError), readString)
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Generic (class Generic, gShow, gEq)
@@ -37,6 +37,41 @@ throwL = ExceptT <<< pure <<< Left <<< Left
 throwR :: forall e1 e2 m a. Applicative m => e2 -> ExceptT (Either e1 e2) m a
 throwR = ExceptT <<< pure <<< Left <<< Right
 
+data Internal
+  = IfThenElse
+  | Addition
+  | Parens
+  | Eq
+
+derive instance genericInternal :: Generic Internal
+instance showInternal :: Show Internal where show = gShow
+instance eqInternal :: Eq Internal where eq = gEq
+instance internalIsForeign :: IsForeign Internal where
+  read obj = do
+    tag <- readString obj
+    case tag of
+      "ifthenelse" -> pure IfThenElse
+      "addition" -> pure Addition
+      "parens" -> pure Parens
+      "eq" -> pure Eq
+      _ -> Left (JSONError "found unexpected value in internalIsForeign")
+
+data Leaf
+  = BoolLeaf Boolean
+  | IntLeaf Int
+
+derive instance genericLeaf :: Generic Leaf
+instance showLeaf :: Show Leaf where show = gShow
+instance eqLeaf :: Eq Leaf where eq = gEq
+
+instance leafIsForeign :: IsForeign Leaf where
+  read obj = do
+    tag <- readProp "tag" obj
+    case tag of
+      "bool" -> BoolLeaf <$> readProp "value" obj
+      "int" -> IntLeaf <$> readProp "value" obj
+      _ -> Left (JSONError "found unexpected value in leafIsForeign")
+
 data Syntax internal leaf
   = Internal internal (Array (Syntax internal leaf))
   | Leaf leaf
@@ -56,6 +91,11 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
       "hole" -> Hole <$> readProp "value" obj
       "conflict" -> Conflict <$> readProp "left" obj <*> readProp "right" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
+
+-- zipper and zoomed zipper for this particular language
+type LangSyntax = Syntax Internal Leaf
+type LangZipper = SyntaxZipper Internal Leaf
+type ZoomedLang = ZoomedSZ Internal Leaf
 
 syntaxHoles :: forall a b. Syntax a b -> Array String
 syntaxHoles (Internal _ children) = children >>= syntaxHoles
@@ -167,7 +207,8 @@ editFocus :: forall a b. (Syntax a b -> Syntax a b) -> SyntaxZipper a b -> Synta
 editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 
-makePath :: forall a b. Show b => Syntax a b -> Int -> Either String Path
+-- makePath :: forall a b. Show b => Syntax a b -> Int -> Either String Path
+makePath :: LangSyntax -> Int -> Either String Path
 makePath syntax n =
   let z = (runExceptT (consumePath syntax))
       y :: Tuple (Either (Either String Path) Unit) Int
@@ -181,15 +222,20 @@ makePath syntax n =
 -- keep moving in to the outermost syntax holding this offset
 -- either give back the resulting path or the number of chars
 -- consumed
-consumePath :: forall a b. Show b
-            => Syntax a b
+-- consumePath :: forall a b. Show b
+--             => Syntax a b
+--             -> ExceptT (Either String Path) (State Int) Unit
+consumePath :: LangSyntax
             -> ExceptT (Either String Path) (State Int) Unit
-consumePath (Leaf n) = do
+consumePath (Leaf l) = do
+  let template = case l of
+        BoolLeaf b -> show b
+        IntLeaf i -> show i
   offset <- get
-  let nlen = length (show n)
-  if offset <= nlen
+  let len = length template
+  if offset <= len
      then throwR (PathOffset offset)
-     else modify (_ - nlen)
+     else modify (_ - len)
 
 -- TODO pretty much identical to prev -- reduce duplication
 consumePath (Hole name) = do
@@ -199,10 +245,13 @@ consumePath (Hole name) = do
      then throwR (PathOffset offset)
      else modify (_ - namelen)
 
-consumePath (Internal _ children) = do
-  -- XXX hardcode for now
-  -- arr :: Array (Either String Syntax)
-  arr <- case zipTemplate additionTemplate children of
+consumePath (Internal tag children) = do
+  let template = case tag of
+        IfThenElse -> ifThenElseTemplate
+        Addition -> additionTemplate
+        Parens -> parensTemplate
+        Eq -> eqTemplate
+  arr <- case zipTemplate template children of
            Nothing -> throwL "couldn't zip!"
            Just arr -> pure arr
 

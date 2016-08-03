@@ -1,6 +1,7 @@
 module Template where
 
 import Prelude
+import Data.Tuple
 import Data.Array as Array
 import Data.Array ((:), filter)
 import Data.Either (Either(..))
@@ -8,7 +9,6 @@ import Data.Generic (class Generic, gShow, gEq)
 import Data.Maybe (Maybe(..))
 import Data.String (length, split)
 import Data.Traversable (Accum, mapAccumL, sequence)
-import Data.Tuple
 
 
 data TemplatePiece
@@ -61,6 +61,12 @@ additionTemplate = mkTemplate "{} + {}"
 
 parensTemplate :: Template
 parensTemplate = mkTemplate "({})"
+
+ifThenElseTemplate :: Template
+ifThenElseTemplate = mkTemplate "if {} then {} else {}"
+
+eqTemplate :: Template
+eqTemplate = mkTemplate "{} == {}"
 
 type AccumState = {fillers :: Array (Array LightInline), pos :: Int}
 

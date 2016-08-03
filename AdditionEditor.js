@@ -244,14 +244,16 @@ export class StatefulAdditionEditor extends React.Component {
     this.handleMoveCursor = anchorFocus => this._handleMoveCursor(anchorFocus);
   }
 
-  componentWillReceiveProps({selectSyntax}) {
-    this.setState(this._getState(selectSyntax));
-  }
+  // XXX this was messing up editing
+  // componentWillReceiveProps({selectSyntax}) {
+  //   this.setState(this._getState(selectSyntax));
+  // }
 
   _getState(selectSyntax) {
     return handleEither(
       initSelectSyntax(selectSyntax),
       lastWarning => {
+        console.log(lastWarning);
         return {
           // TODO we don't actually handle the case when opaqueSyntax is null
           opaqueSyntax: null,

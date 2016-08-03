@@ -2,10 +2,15 @@ module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> (Syntax, ContentState)`
 
 import Prelude
-
+import Template
+import Util.String
+import Data.Array as Array
+import Data.List as List
+import Data.Map as Map
+import Data.String as String
+import Operate as Operate
 import Control.Monad.State (State, modify, get, evalState, execState)
 import Data.Array ((:), concatMap, snoc, (..))
-import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
@@ -14,18 +19,12 @@ import Data.Foreign.Class (class IsForeign, read, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Generic (class Generic)
-import Data.List as List
-import Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
-import Data.String as String
 import Data.Traversable (sequence)
-
-import Operate as Operate
 import Path (Path, PathStep, subPath, getOffset)
-import Syntax (SUnit, ZoomedSZ(ZoomedSZ), SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
-import Template
-import Util.String
+import Syntax (Internal(..), Leaf(..), ZoomedSZ(ZoomedSZ), SyntaxZipper, LangZipper, LangSyntax, ZoomedLang, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
+import Generic (myOptions)
 
 
 type EntityRange =
@@ -126,8 +125,9 @@ blockFromContent inlines =
      , preEntityMap: toPreEntityMap finalState.preEntityMap
      }
 
-contentFromSyntax :: forall a b. Show b
-                  => (Syntax a b)
+-- contentFromSyntax :: forall a b. Show b
+--                   => (Syntax a b)
+contentFromSyntax :: LangSyntax
                   -> Maybe Path
                   -> Maybe Path
                   -> State Int {inlines :: Array LightInline, ids :: Map Int (Array PathStep)}
@@ -137,7 +137,12 @@ contentFromSyntax syntax anchor focus = do
   myId <- get
   modify (_ + 1)
   case syntax of
-    Internal _ children -> do
+    Internal tag children -> do
+      let template = case tag of
+            IfThenElse -> ifThenElseTemplate
+            Addition -> additionTemplate
+            Parens -> parensTemplate
+            Eq -> eqTemplate
       -- TODO -- returning this way causes us to traverse the array twice later
       children' <- iForM children \i child -> do
         {inlines, ids: childIds} <- contentFromSyntax child (subPath i anchor) (subPath i focus)
@@ -147,7 +152,7 @@ contentFromSyntax syntax anchor focus = do
           }
 
       -- XXX should be able to actually fail here
-      let preInlines = plusTemplate myId anchorOffset focusOffset (map _.inlines children')
+      let preInlines = interpolateTemplate template {key: myId, anchorOffset, focusOffset} (map _.inlines children')
       let inlines = case preInlines of
             Just x -> x
             Nothing -> []
@@ -155,8 +160,10 @@ contentFromSyntax syntax anchor focus = do
       let ids = Map.insert myId [] (Map.unions (map _.ids children'))
       pure {inlines, ids}
 
-    Leaf n ->
-      let content = show n
+    Leaf l ->
+      let content = case l of
+            BoolLeaf b -> show b
+            IntLeaf i -> show i
           inlines = [
             {ty: InlineLeaf, key: myId, content, info: inlineSelection 0 (String.length content) anchorOffset focusOffset}
           ]
@@ -200,12 +207,6 @@ newtype WrappedRawSelection = WrappedRawSelection -- RawSelection
   , focusOffset :: Int
   }
 
-myOptions :: Options
-myOptions = defaultOptions
-  { sumEncoding = TaggedObject { tagFieldName: "tag", contentsFieldName: "value" }
-  , unwrapNewtypes = true
-  }
-
 derive instance genericWrappedRawSelection :: Generic WrappedRawSelection
 instance foreignWrappedRawSelection :: IsForeign WrappedRawSelection where
   read = readGeneric myOptions
@@ -233,7 +234,8 @@ instance rawSelectSyntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Ra
       }
       )
 
-unrawSelectSyntax :: forall a b. Show b => RawSelectSyntax a b -> Either String (ZoomedSZ a b)
+-- unrawSelectSyntax :: forall a b. Show b => RawSelectSyntax a b -> Either String (ZoomedSZ a b)
+unrawSelectSyntax :: RawSelectSyntax Internal Leaf -> Either String ZoomedLang
 unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = do
   anchor <- makePath syntax aOffset
   focus <- makePath syntax fOffset
@@ -258,12 +260,12 @@ type ContentState =
   , preEntityMap :: PreEntityMap
   }
 
-initSelectSyntax :: Fn1 Foreign (Either String (ZoomedSZ SUnit Int))
+initSelectSyntax :: Fn1 Foreign (Either String ZoomedLang)
 initSelectSyntax = mkFn1 \foreignSelectSyntax -> do
   raw <- lmap show (read foreignSelectSyntax)
   unrawSelectSyntax raw
 
-genContentState :: Fn1 (SyntaxZipper SUnit Int) Foreign
+genContentState :: Fn1 LangZipper Foreign
 genContentState = mkFn1 \zipper ->
   let top = zipUp zipper
       -- TODO why the Justs?
@@ -272,7 +274,7 @@ genContentState = mkFn1 \zipper ->
       contentState = blockFromContent (contentAndKeymapping.inlines)
   in toForeign contentState
 
-operate :: Fn2 (SyntaxZipper SUnit Int) Foreign (Either String (SyntaxZipper SUnit Int))
+operate :: Fn2 LangZipper Foreign (Either String LangZipper)
 operate = mkFn2 \zipper foreignAction -> do
   action <- lmap show (read foreignAction)
   Operate.operate zipper action
@@ -284,7 +286,7 @@ derive instance genericWrappedAnchorFocus :: Generic WrappedAnchorFocus
 instance foreignWrappedAnchorFocus :: IsForeign WrappedAnchorFocus where
   read = readGeneric myOptions
 
-setEndpoints :: Fn2 (SyntaxZipper SUnit Int) Foreign (Either String (ZoomedSZ SUnit Int))
+setEndpoints :: Fn2 LangZipper Foreign (Either String ZoomedLang)
 setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   let top = zipUp zipper
   WrappedAnchorFocus {anchor: aOffset, focus: fOffset}
@@ -294,10 +296,10 @@ setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   let zipper' = top {anchor = anchor, focus = focus}
   pure (zoomIn zipper')
 
-listLocalHoles :: Fn1 (SyntaxZipper SUnit Int) (Array String)
+listLocalHoles :: Fn1 LangZipper (Array String)
 listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
 
-listAllHoles :: Fn1 (SyntaxZipper SUnit Int) (Array String)
+listAllHoles :: Fn1 LangZipper (Array String)
 listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
 
 type SelectionInfo =
@@ -306,13 +308,14 @@ type SelectionInfo =
   , evaluated :: String
   }
 
-evaluateSelection :: Syntax SUnit Int -> Either String Int
-evaluateSelection (Internal _ children) = foldl (+) (Right 0) (map evaluateSelection children)
-evaluateSelection (Leaf i) = Right i
-evaluateSelection (Hole str) = Left $ "found hole " <> str
-evaluateSelection (Conflict _ _) = Left "found conflict"
+evaluateSelection :: Syntax Internal Leaf -> Either String Leaf
+evaluateSelection _ = Left "eval"
+-- evaluateSelection (Internal _ children) = foldl (+) (Right 0) (map evaluateSelection children)
+-- evaluateSelection (Leaf i) = Right i
+-- evaluateSelection (Hole str) = Left $ "found hole " <> str
+-- evaluateSelection (Conflict _ _) = Left "found conflict"
 
-selectionInfo :: Fn1 (SyntaxZipper SUnit Int) SelectionInfo
+selectionInfo :: Fn1 LangZipper SelectionInfo
 selectionInfo = mkFn1 \z ->
   if z.anchor == z.focus
   then let anchorInfo = show (followPath z.syntax z.anchor)

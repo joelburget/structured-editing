@@ -11,11 +11,14 @@ const onChange = action('onChange');
 // 1 + hole
 const holeHole = {
   tag: 'internal',
-  value: '',
+  value: 'addition',
   children: [
     {
       tag: 'leaf',
-      value: 1,
+      value: {
+        tag: 'int',
+        value: 1,
+      },
     },
     {
       tag: 'hole',
@@ -27,11 +30,14 @@ const holeHole = {
 // 1 + _
 const emptyHole = {
   tag: 'internal',
-  value: '',
+  value: 'addition',
   children: [
     {
       tag: 'leaf',
-      value: 1,
+      value: {
+        tag: 'int',
+        value: 1,
+      },
     },
     {
       tag: 'hole',
@@ -71,15 +77,21 @@ storiesOf('AdditionEditor', module)
     const selectSyntax = {
       syntax: {
         tag: 'internal',
-        value: '',
+        value: 'addition',
         children: [
           {
             tag: 'leaf',
-            value: 1,
+            value: {
+              tag: 'int',
+              value: 1,
+            },
           },
           {
             tag: 'leaf',
-            value: 1,
+            value: {
+              tag: 'int',
+              value: 1,
+            },
           },
         ]
       },
@@ -98,23 +110,32 @@ storiesOf('AdditionEditor', module)
     const selectSyntax = {
       syntax: {
         tag: 'internal',
-        value: '',
+        value: 'addition',
         children: [
           {
             tag: 'leaf',
-            value: 1,
+            value: {
+              tag: 'int',
+              value: 1,
+            },
           },
           {
             tag: 'internal',
-            value: '',
+            value: 'addition',
             children: [
               {
                 tag: 'leaf',
-                value: 2,
+                value: {
+                  tag: 'int',
+                  value: 2,
+                },
               },
               {
                 tag: 'leaf',
-                value: 3,
+                value: {
+                  tag: 'int',
+                  value: 3,
+                },
               },
             ]
           },
