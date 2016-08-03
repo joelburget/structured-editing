@@ -25,6 +25,7 @@ import Data.Traversable (sequence)
 import Path (Path, PathStep, subPath, getOffset)
 import Syntax (Internal(..), Leaf(..), ZoomedSZ(ZoomedSZ), SyntaxZipper, LangZipper, LangSyntax, ZoomedLang, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
 import Generic (myOptions)
+import Data.Tuple
 
 
 type EntityRange =
@@ -309,11 +310,34 @@ type SelectionInfo =
   }
 
 evaluateSelection :: Syntax Internal Leaf -> Either String Leaf
-evaluateSelection _ = Left "eval"
--- evaluateSelection (Internal _ children) = foldl (+) (Right 0) (map evaluateSelection children)
--- evaluateSelection (Leaf i) = Right i
--- evaluateSelection (Hole str) = Left $ "found hole " <> str
--- evaluateSelection (Conflict _ _) = Left "found conflict"
+evaluateSelection (Internal Addition [l, r]) = do
+  l' <- evaluateSelection l
+  r' <- evaluateSelection r
+  case Tuple l' r' of
+    Tuple (IntLeaf a) (IntLeaf b) -> pure (IntLeaf (a + b))
+    _ -> Left "adding non-ints"
+evaluateSelection (Internal IfThenElse [i, l, r]) = do
+  i' <- evaluateSelection i
+  l' <- evaluateSelection l
+  r' <- evaluateSelection r
+  case i' of
+    BoolLeaf i'' -> case Tuple l' r' of
+      Tuple (IntLeaf a) (IntLeaf b) -> pure (IntLeaf (if i'' then a else b))
+      Tuple (BoolLeaf a) (BoolLeaf b) -> pure (BoolLeaf (if i'' then a else b))
+      _ -> Left "non-matching if-then-else branches"
+    _ -> Left "if branching on non-boolean"
+evaluateSelection (Internal Parens [x]) = evaluateSelection x
+evaluateSelection (Internal Eq [x, y]) = do
+  x' <- evaluateSelection x
+  y' <- evaluateSelection y
+  case Tuple x' y' of
+    Tuple (IntLeaf a) (IntLeaf b) -> pure (BoolLeaf (a == b))
+    Tuple (BoolLeaf a) (BoolLeaf b) -> pure (BoolLeaf (a == b))
+    _ -> Left "comparison type error"
+evaluateSelection (Leaf i) = Right i
+evaluateSelection (Hole str) = Left $ "found hole " <> str
+evaluateSelection (Conflict _ _) = Left "found conflict"
+evaluateSelection _ = Left "evaluation error"
 
 selectionInfo :: Fn1 LangZipper SelectionInfo
 selectionInfo = mkFn1 \z ->
