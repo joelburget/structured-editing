@@ -63,7 +63,7 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
     , focus: z.anchor .+ 1
     }
   | name <> String.singleton char == "false" = Right
-    { syntax: Leaf (BoolLeaf true)
+    { syntax: Leaf (BoolLeaf false)
     , past
     , anchor: z.anchor .+ 1
     , focus: z.anchor .+ 1
@@ -112,6 +112,16 @@ operateAtomic z@{syntax: Leaf (IntLeaf n), past, anchor: PathOffset o} (Typing c
           }
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number (this is almost certainly because the number is larger than 32 bit int allows)"
   | otherwise = Left "inserting non-digit in number"
+operateAtomic z@{syntax: Leaf (BoolLeaf b), past, anchor: PathOffset o} Backspace
+  | o == 0 = Left "backspacing out the left of a number"
+  | o > length (show b)
+  = Left "inconsistency: backspacing with cursor past end of number"
+  | otherwise = Right
+      { syntax: Hole (spliceStr (show b) (o - 1) 1 "")
+      , past
+      , anchor: z.anchor .+ (-1)
+      , focus: z.anchor .+ (-1)
+      }
 operateAtomic z@{syntax: Leaf (IntLeaf n), past, anchor: PathOffset o} Backspace
   | o == 0 = Left "backspacing out the left of a number"
   | o > length (show n)
