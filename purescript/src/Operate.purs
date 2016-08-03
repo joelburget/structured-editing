@@ -56,6 +56,18 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
           , focus: z.anchor .+ 1
           }
         Nothing -> Left "inconsistency: unable to parse after inserting single digit"
+  | name <> String.singleton char == "true" = Right
+    { syntax: Leaf (BoolLeaf true)
+    , past
+    , anchor: z.anchor .+ 1
+    , focus: z.anchor .+ 1
+    }
+  | name <> String.singleton char == "false" = Right
+    { syntax: Leaf (BoolLeaf true)
+    , past
+    , anchor: z.anchor .+ 1
+    , focus: z.anchor .+ 1
+    }
   -- | name == "" && char == '(' = Right
   --     { syntax: Hole ""
   --     , past: {value: SUnit, otherChildren: [Hole ""], dir: stepLeft} : past

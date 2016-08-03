@@ -73,6 +73,44 @@ storiesOf('AdditionEditor', module)
       />
     );
   })
+  .add('|if true then hole 1 else 2', () => {
+    const selectSyntax = {
+      syntax: {
+        tag: 'internal',
+        value: 'ifthenelse',
+        children: [
+          {
+            tag: 'leaf',
+            value: {
+              tag: 'bool',
+              value: true,
+            },
+          },
+          {
+            tag: 'hole',
+            value: 'hole 1',
+          },
+          {
+            tag: 'leaf',
+            value: {
+              tag: 'int',
+              value: 2,
+            },
+          },
+        ]
+      },
+
+      // point to the start of the block
+      anchor: 0,
+      focus: 0,
+    };
+    return (
+        <StatefulAdditionEditor
+      onChange={onChange}
+      selectSyntax={selectSyntax}
+        />
+    );
+  })
   .add('|1 + 1', () => {
     const selectSyntax = {
       syntax: {
