@@ -142,11 +142,3 @@ inlineSelection start len anchorOffset focusOffset =
   in { anchor: f anchorOffset
      , focus: f focusOffset
      }
-
-plusTemplate :: Int
-             -> Maybe Int
-             -> Maybe Int
-             -> Array (Array LightInline)
-             -> Maybe (Array LightInline)
-plusTemplate key anchorOffset focusOffset fillers =
-  interpolateTemplate additionTemplate {key, anchorOffset, focusOffset} fillers

@@ -20,14 +20,17 @@ import Test.Unit.Console (TESTOUTPUT)
 import Test.Unit.Main (runTest)
 
 
-onePlusOne :: Syntax SUnit Int
-onePlusOne = Internal SUnit [Leaf 1, Leaf 1]
+onePlusOne :: LangSyntax
+onePlusOne = Internal Addition [Leaf (IntLeaf 1), Leaf (IntLeaf 1)]
 
-onePlusUnderscore :: Syntax SUnit Int
-onePlusUnderscore = Internal SUnit [Leaf 1, Hole "_"]
+onePlusUnderscore :: LangSyntax
+onePlusUnderscore = Internal Addition [Leaf (IntLeaf 1), Hole "_"]
 
-oneTwoThree :: Syntax SUnit Int
-oneTwoThree = Internal SUnit [Leaf 1, Internal SUnit [Leaf 2, Leaf 3]]
+oneTwoThree :: LangSyntax
+oneTwoThree = Internal Addition
+  [ Leaf (IntLeaf 1)
+  , Internal Addition [Leaf (IntLeaf 2), Leaf (IntLeaf 3)]
+  ]
 
 newtype ZipperEq a b = ZipperEq (SyntaxZipper a b)
 instance eqZipperEq :: (Eq a, Generic a, Generic b) => Eq (ZipperEq a b) where
@@ -93,12 +96,12 @@ traversalsSuite = suite "traversals" do
 operationsSuite = suite "operations" do
   test "inserting at front" do
     assertZEq
-      { syntax: Leaf 21
+      { syntax: Leaf (IntLeaf 21)
       , anchor: PathOffset 1
       , focus: PathOffset 1
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf 1)) (Typing '2'))
+      (operateAtomic (makeZipper (Leaf (IntLeaf 1))) (Typing '2'))
 
     assertZEq
       { syntax: Hole "ba"
@@ -110,12 +113,12 @@ operationsSuite = suite "operations" do
 
   test "inserting in middle" do
     assertZEq
-      { syntax: Leaf 1234
+      { syntax: Leaf (IntLeaf 1234)
       , anchor: PathOffset 3
       , focus: PathOffset 3
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf 124)) (Typing '3'))
+      (operateAtomic (makeZipper (Leaf (IntLeaf 124))) (Typing '3'))
 
     assertZEq
       { syntax: Hole "abcd"
@@ -135,21 +138,21 @@ operationsSuite = suite "operations" do
       (operateAtomic (makeZipper (Hole "abcd")) Backspace)
 
     assertZEq
-      { syntax: Leaf 134
+      { syntax: Leaf (IntLeaf 134)
       , anchor: PathOffset 1
       , focus: PathOffset 1
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf 1234)) Backspace)
+      (operateAtomic (makeZipper (Leaf (IntLeaf 1234))) Backspace)
 
   test "backspacing negative number" do
     assertZEq
-      { syntax: Leaf 1
+      { syntax: Leaf (IntLeaf 1)
       , anchor: PathOffset 0
       , focus: PathOffset 0
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf (-1))) Backspace)
+      (operateAtomic (makeZipper (Leaf (IntLeaf (-1)))) Backspace)
 
 
 main :: forall e. Eff (console :: CONSOLE, testOutput :: TESTOUTPUT | e) Unit

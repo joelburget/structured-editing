@@ -51,4 +51,4 @@ templateSuite = suite "templating" do
         }
       , r
       ]
-      (plusTemplate 1 Nothing Nothing children)
+      (interpolateTemplate additionTemplate {key: 1, anchorOffset: Nothing, focusOffset: Nothing} children)
