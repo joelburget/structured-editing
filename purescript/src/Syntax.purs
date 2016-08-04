@@ -6,7 +6,7 @@ import Data.Tuple
 import Template
 import Util.String
 import Data.List as List
-import Control.Monad.State (State, modify, get, evalState, evalStateT, runState)
+import Control.Monad.State (State, StateT, modify, get, put, evalState, evalStateT, runState)
 import Data.Array.Partial (unsafeIndex)
 import Data.Bifunctor (lmap, rmap)
 import Data.Either (Either(..))
@@ -218,6 +218,7 @@ makePath syntax n =
        Tuple (Right _) c -> Left $ "makePath overflow: " <>
          show n <> " demanded, " <> show c <> " consumed"
 
+newtype ConsumedInPreviousChunks = ConsumedInPreviousChunks Int
 
 -- keep moving in to the outermost syntax holding this offset
 -- either give back the resulting path or the number of chars
@@ -257,15 +258,24 @@ consumePath (Internal tag children) = do
 
   -- state monad to track how much we've consumed
   -- except to give back result
-  forM arr \child -> case child of
-    Left str -> do
-      let len = length str
-      offset <- get
-      if offset <= len
-        then throwR (PathOffset offset)
-        else modify (_ - len)
-    Right (Tuple childSyn ix) ->
-      withExceptT (rmap (PathCons ix)) (consumePath childSyn)
+  -- TODO I must be doing something wrong to have to do all this lifting...
+  let yieldsPiece :: StateT ConsumedInPreviousChunks
+                     (ExceptT (Either String Path)
+                     (State Int))
+                     Unit
+      yieldsPiece = forM_ arr \child -> case child of
+        Left str -> do
+          let len = length str
+          (ConsumedInPreviousChunks prev) <- get
+          offset <- lift $ lift $ get
+          if offset <= len
+            then lift $ throwR (PathOffset (prev + offset))
+            else do lift $ lift $ modify (_ - len)
+                    put $ ConsumedInPreviousChunks (prev + len)
+        Right (Tuple childSyn ix) ->
+          lift $ withExceptT (rmap (PathCons ix)) (consumePath childSyn)
+
+  evalStateT yieldsPiece (ConsumedInPreviousChunks 0)
 
   pure unit
 

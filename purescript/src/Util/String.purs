@@ -1,4 +1,4 @@
-module Util.String (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM, traceShowId, traceAnyId, traceLabelShowId, traceLabelAnyId) where
+module Util.String (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM, forM_, traceShowId, traceAnyId, traceLabelShowId, traceLabelAnyId) where
 
 import Prelude
 import Control.Monad.State (modify, get, evalState, evalStateT)
@@ -35,6 +35,9 @@ iForM as f = flip evalStateT 0 $ flip traverse as \a -> do
 
 forM :: forall a b m t. (Traversable t, Applicative m) => t a -> (a -> m b) -> m (t b)
 forM = flip traverse
+
+forM_ :: forall a b m t. (Traversable t, Applicative m) => t a -> (a -> m b) -> m Unit
+forM_ x f = forM x f *> pure unit
 
 traceShowId :: forall a. Show a => a -> a
 traceShowId a = traceShow a \_ -> a
