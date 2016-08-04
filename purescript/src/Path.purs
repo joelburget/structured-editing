@@ -6,6 +6,8 @@ import Data.Maybe (Maybe(Just, Nothing))
 
 type PathStep = Int
 
+-- TODO this is more accurately a `DisplayPath` -- it allows offsets into a
+-- leaf and it only goes top to bottom (no stepping up)
 data Path
   = PathOffset Int
   | PathCons PathStep Path
@@ -45,3 +47,9 @@ pathOffsetNum (PathOffset i) j = PathOffset (i + j)
 pathOffsetNum (PathCons step rest) j = PathCons step (pathOffsetNum rest j)
 
 infix 4 pathOffsetNum as .+
+
+data ConstraintStep
+  = StepTy
+  | StepChild PathStep
+
+type ConstraintPath = Array ConstraintStep

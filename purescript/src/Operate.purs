@@ -13,8 +13,9 @@ import Data.String (length)
 import Data.String as String
 
 import Path (Path(..), (.+), PathStep)
-import Syntax (SyntaxZipper, LangZipper, Syntax(..), Internal(..), Leaf(..))
+import Syntax (SyntaxZipper, Syntax(..))
 import Util.String (isDigit, spliceStr)
+import Lang (LangZipper, Internal(..), Leaf(..))
 
 
 stepLeft :: PathStep

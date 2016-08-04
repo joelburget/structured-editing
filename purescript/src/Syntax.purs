@@ -18,7 +18,7 @@ import Data.List (List, (:), uncons)
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (length)
 import Partial.Unsafe (unsafePartial)
-import Path (Path(..), PathStep, pathHead, pathUncons)
+import Path (Path(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
 
 
 -- "syntax unit"
@@ -37,40 +37,23 @@ throwL = ExceptT <<< pure <<< Left <<< Left
 throwR :: forall e1 e2 m a. Applicative m => e2 -> ExceptT (Either e1 e2) m a
 throwR = ExceptT <<< pure <<< Left <<< Right
 
-data Internal
-  = IfThenElse
-  | Addition
-  | Parens
-  | Eq
 
-derive instance genericInternal :: Generic Internal
-instance showInternal :: Show Internal where show = gShow
-instance eqInternal :: Eq Internal where eq = gEq
-instance internalIsForeign :: IsForeign Internal where
-  read obj = do
-    tag <- readString obj
-    case tag of
-      "ifthenelse" -> pure IfThenElse
-      "addition" -> pure Addition
-      "parens" -> pure Parens
-      "eq" -> pure Eq
-      _ -> Left (JSONError "found unexpected value in internalIsForeign")
+data Constraint internal leaf
+  = UnifyLocs ConstraintPath ConstraintPath
+  | UnifyWith ConstraintPath (Syntax internal leaf)
 
-data Leaf
-  = BoolLeaf Boolean
-  | IntLeaf Int
 
-derive instance genericLeaf :: Generic Leaf
-instance showLeaf :: Show Leaf where show = gShow
-instance eqLeaf :: Eq Leaf where eq = gEq
+class Lang internal leaf where
+  getLeafTemplate :: Syntax internal leaf -> String
+  getInternalTemplate :: Syntax internal leaf -> Template
 
-instance leafIsForeign :: IsForeign Leaf where
-  read obj = do
-    tag <- readProp "tag" obj
-    case tag of
-      "bool" -> BoolLeaf <$> readProp "value" obj
-      "int" -> IntLeaf <$> readProp "value" obj
-      _ -> Left (JSONError "found unexpected value in leafIsForeign")
+  -- this is (right now) a limited notion of evaluation. i'd love to express a
+  -- small-step semantics rather than a big-step all-at-once evaluation
+  normalize :: Syntax internal leaf -> Syntax internal leaf
+
+  -- point in all directions
+  -- TODO more accurately a set
+  constrainNeighbors :: Syntax internal leaf -> Array (Constraint internal leaf)
 
 data Syntax internal leaf
   = Internal internal (Array (Syntax internal leaf))
@@ -91,11 +74,6 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
       "hole" -> Hole <$> readProp "value" obj
       "conflict" -> Conflict <$> readProp "left" obj <*> readProp "right" obj
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
-
--- zipper and zoomed zipper for this particular language
-type LangSyntax = Syntax Internal Leaf
-type LangZipper = SyntaxZipper Internal Leaf
-type ZoomedLang = ZoomedSZ Internal Leaf
 
 syntaxHoles :: forall a b. Syntax a b -> Array String
 syntaxHoles (Internal _ children) = children >>= syntaxHoles
@@ -207,8 +185,7 @@ editFocus :: forall a b. (Syntax a b -> Syntax a b) -> SyntaxZipper a b -> Synta
 editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 
--- makePath :: forall a b. Show b => Syntax a b -> Int -> Either String Path
-makePath :: LangSyntax -> Int -> Either String Path
+makePath :: forall a b. Lang a b => Syntax a b -> Int -> Either String Path
 makePath syntax n =
   let z = (runExceptT (consumePath syntax))
       y :: Tuple (Either (Either String Path) Unit) Int
@@ -223,17 +200,13 @@ newtype ConsumedInPreviousChunks = ConsumedInPreviousChunks Int
 -- keep moving in to the outermost syntax holding this offset
 -- either give back the resulting path or the number of chars
 -- consumed
--- consumePath :: forall a b. Show b
---             => Syntax a b
---             -> ExceptT (Either String Path) (State Int) Unit
-consumePath :: LangSyntax
+consumePath :: forall a b. Lang a b -- Show b
+            => Syntax a b
             -> ExceptT (Either String Path) (State Int) Unit
-consumePath (Leaf l) = do
-  let template = case l of
-        BoolLeaf b -> show b
-        IntLeaf i -> show i
+consumePath l@(Leaf _) = do
+  let str = getLeafTemplate l
   offset <- get
-  let len = length template
+  let len = length str
   if offset <= len
      then throwR (PathOffset offset)
      else modify (_ - len)
@@ -246,15 +219,11 @@ consumePath (Hole name) = do
      then throwR (PathOffset offset)
      else modify (_ - namelen)
 
-consumePath (Internal tag children) = do
-  let template = case tag of
-        IfThenElse -> ifThenElseTemplate
-        Addition -> additionTemplate
-        Parens -> parensTemplate
-        Eq -> eqTemplate
+consumePath i@(Internal _ children) = do
+  let template = getInternalTemplate i
   arr <- case zipTemplate template children of
            Nothing -> throwL "couldn't zip!"
-           Just arr -> pure arr
+           Just arr' -> pure arr'
 
   -- state monad to track how much we've consumed
   -- except to give back result

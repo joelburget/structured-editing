@@ -56,18 +56,6 @@ mkTemplate = split "{}" >>> map TemplateStr >>> intersperse TemplateHole >>> fil
 
 ------
 
-additionTemplate :: Template
-additionTemplate = mkTemplate "{} + {}"
-
-parensTemplate :: Template
-parensTemplate = mkTemplate "({})"
-
-ifThenElseTemplate :: Template
-ifThenElseTemplate = mkTemplate "if {} then {} else {}"
-
-eqTemplate :: Template
-eqTemplate = mkTemplate "{} == {}"
-
 type AccumState = {fillers :: Array (Array LightInline), pos :: Int}
 
 interpolateTemplate :: Template

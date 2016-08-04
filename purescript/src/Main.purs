@@ -23,9 +23,10 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Traversable (sequence)
 import Path (Path, PathStep, subPath, getOffset)
-import Syntax (Internal(..), Leaf(..), ZoomedSZ(ZoomedSZ), SyntaxZipper, LangZipper, LangSyntax, ZoomedLang, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
+import Syntax (class Lang, getInternalTemplate, getLeafTemplate, normalize, ZoomedSZ(ZoomedSZ), SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
 import Generic (myOptions)
 import Data.Tuple
+import Lang (LangZipper, LangSyntax, ZoomedLang, Internal(..), Leaf(..))
 
 
 type EntityRange =
@@ -139,11 +140,7 @@ contentFromSyntax syntax anchor focus = do
   modify (_ + 1)
   case syntax of
     Internal tag children -> do
-      let template = case tag of
-            IfThenElse -> ifThenElseTemplate
-            Addition -> additionTemplate
-            Parens -> parensTemplate
-            Eq -> eqTemplate
+      let template = getInternalTemplate syntax
       -- TODO -- returning this way causes us to traverse the array twice later
       children' <- iForM children \i child -> do
         {inlines, ids: childIds} <- contentFromSyntax child (subPath i anchor) (subPath i focus)
@@ -162,9 +159,7 @@ contentFromSyntax syntax anchor focus = do
       pure {inlines, ids}
 
     Leaf l ->
-      let content = case l of
-            BoolLeaf b -> show b
-            IntLeaf i -> show i
+      let content = getLeafTemplate syntax
           inlines = [
             {ty: InlineLeaf, key: myId, content, info: inlineSelection 0 (String.length content) anchorOffset focusOffset}
           ]
@@ -309,47 +304,17 @@ type SelectionInfo =
   , evaluated :: String
   }
 
-evaluateSelection :: Syntax Internal Leaf -> Either String Leaf
-evaluateSelection (Internal Addition [l, r]) = do
-  l' <- evaluateSelection l
-  r' <- evaluateSelection r
-  case Tuple l' r' of
-    Tuple (IntLeaf a) (IntLeaf b) -> pure (IntLeaf (a + b))
-    _ -> Left "adding non-ints"
-evaluateSelection (Internal IfThenElse [i, l, r]) = do
-  i' <- evaluateSelection i
-  l' <- evaluateSelection l
-  r' <- evaluateSelection r
-  case i' of
-    BoolLeaf i'' -> case Tuple l' r' of
-      Tuple (IntLeaf a) (IntLeaf b) -> pure (IntLeaf (if i'' then a else b))
-      Tuple (BoolLeaf a) (BoolLeaf b) -> pure (BoolLeaf (if i'' then a else b))
-      _ -> Left "non-matching if-then-else branches"
-    _ -> Left "if branching on non-boolean"
-evaluateSelection (Internal Parens [x]) = evaluateSelection x
-evaluateSelection (Internal Eq [x, y]) = do
-  x' <- evaluateSelection x
-  y' <- evaluateSelection y
-  case Tuple x' y' of
-    Tuple (IntLeaf a) (IntLeaf b) -> pure (BoolLeaf (a == b))
-    Tuple (BoolLeaf a) (BoolLeaf b) -> pure (BoolLeaf (a == b))
-    _ -> Left "comparison type error"
-evaluateSelection (Leaf i) = Right i
-evaluateSelection (Hole str) = Left $ "found hole " <> str
-evaluateSelection (Conflict _ _) = Left "found conflict"
-evaluateSelection _ = Left "evaluation error"
-
 selectionInfo :: Fn1 LangZipper SelectionInfo
 selectionInfo = mkFn1 \z ->
   if z.anchor == z.focus
   then let anchorInfo = show (followPath z.syntax z.anchor)
        in { anchorInfo
           , focusInfo: anchorInfo
-          , evaluated: either id show (evaluateSelection z.syntax)
+          , evaluated: show $ normalize z.syntax
           }
   else case zoomIn z of
          ZoomedSZ zz ->
            { anchorInfo: show (followPath z.syntax z.anchor)
            , focusInfo: show (followPath z.syntax z.focus)
-           , evaluated: either id show (evaluateSelection z.syntax)
+           , evaluated: show $ normalize z.syntax
            }
