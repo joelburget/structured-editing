@@ -57,6 +57,18 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
           , focus: z.anchor .+ 1
           }
         Nothing -> Left "inconsistency: unable to parse after inserting single digit"
+  | name == "" && char == '+' = Right
+      { syntax: Hole ""
+      , past: {value: Addition, otherChildren: [Hole ""], dir: stepLeft} : past
+      , anchor: PathOffset 0
+      , focus: PathOffset 0
+      }
+  | name == "" && char == '(' = Right
+      { syntax: Hole ""
+      , past: {value: Parens, otherChildren: [], dir: stepLeft} : past
+      , anchor: PathOffset 0
+      , focus: PathOffset 0
+      }
   | name <> String.singleton char == "true" = Right
     { syntax: Leaf (BoolLeaf true)
     , past
@@ -69,12 +81,6 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
     , anchor: z.anchor .+ 1
     , focus: z.anchor .+ 1
     }
-  -- | name == "" && char == '(' = Right
-  --     { syntax: Hole ""
-  --     , past: {value: SUnit, otherChildren: [Hole ""], dir: stepLeft} : past
-  --     , anchor: PathOffset 0
-  --     , focus: PathOffset 0
-  --     }
   | otherwise = Right
       { syntax: Hole (spliceStr name o 0 (String.singleton char))
       , past
