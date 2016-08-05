@@ -17,7 +17,7 @@ import Data.Map (Map, member)
 import Data.Tuple (Tuple(..))
 
 import Path (Path(..), (.+), PathStep)
-import Syntax (SyntaxZipper, Syntax(..), Past, down)
+import Syntax (SyntaxZipper, Syntax(..), Past, down, getLeafTemplate)
 import Util.String (isDigit, spliceStr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
@@ -154,16 +154,6 @@ operateAtomic z@{syntax: Leaf (IntLeaf n), past, anchor: PathOffset o} (Typing c
           }
         Nothing -> Left "inconsistency: unable to parse after inserting digit in number (this is almost certainly because the number is larger than 32 bit int allows)"
   | otherwise = Left "inserting non-digit in number"
-operateAtomic z@{syntax: Leaf (BoolLeaf b), past, anchor: PathOffset o} Backspace
-  | o == 0 = Left "backspacing out the left of a number"
-  | o > length (show b)
-  = Left "inconsistency: backspacing with cursor past end of number"
-  | otherwise = Right
-      { syntax: Hole (spliceStr (show b) (o - 1) 1 "")
-      , past
-      , anchor: z.anchor .+ (-1)
-      , focus: z.anchor .+ (-1)
-      }
 operateAtomic z@{syntax: Leaf (IntLeaf n), past, anchor: PathOffset o} Backspace
   | o == 0 = Left "backspacing out the left of a number"
   | o > length (show n)
@@ -177,8 +167,14 @@ operateAtomic z@{syntax: Leaf (IntLeaf n), past, anchor: PathOffset o} Backspace
         , focus: z.anchor .+ (-1)
         }
       Nothing -> Left "inconsistency: unable to parse after backspacing in number"
+-- TODO it should be easy for this to also swallow the above defn! Just recheck
+-- whether we can parse the leaf.
+operateAtomic z@{syntax: l@(Leaf _), past, anchor: PathOffset o} Backspace
+  | o == 0 = Left "backspacing out the left of a number"
+  | o > length (getLeafTemplate l)
+  = Left "inconsistency: backspacing with cursor past end of leaf"
   | otherwise = Right
-      { syntax: Hole ""
+      { syntax: Hole (spliceStr (getLeafTemplate l) (o - 1) 1 "")
       , past
       , anchor: z.anchor .+ (-1)
       , focus: z.anchor .+ (-1)
