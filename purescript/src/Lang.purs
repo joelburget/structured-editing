@@ -19,6 +19,7 @@ data IntBoolLang = IntBoolLang
 type LangSyntax = Syntax Internal Leaf
 type LangZipper = SyntaxZipper Internal Leaf
 type ZoomedLang = ZoomedSZ Internal Leaf
+type LangPast = Past Internal Leaf
 
 data Internal
   = IfThenElse
@@ -64,7 +65,11 @@ instance leafIsForeign :: IsForeign Leaf where
       _ -> Left (JSONError "found unexpected value in leafIsForeign")
 
 
--- TODO think of a normalization monad or something
+-- TODO this could be generalized to any language
+-- type NormT = ExceptT (LangSyntax)
+-- type Norm = NormT Identity
+
+-- TODO Norm monad
 norm :: LangSyntax -> LangSyntax
 norm (Internal Addition [l, r]) =
   let l' = norm l

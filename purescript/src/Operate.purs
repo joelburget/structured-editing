@@ -2,6 +2,7 @@ module Operate where
 
 import Prelude
 
+import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Data.Either (Either(..))
 import Data.Foreign (ForeignError(JSONError))
 import Data.Foreign.Class (class IsForeign, readProp)
@@ -11,11 +12,14 @@ import Data.List ((:))
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.String (length)
 import Data.String as String
+import Data.Map as Map
+import Data.Map (Map, member)
+import Data.Tuple (Tuple(..))
 
 import Path (Path(..), (.+), PathStep)
-import Syntax (SyntaxZipper, Syntax(..))
+import Syntax (SyntaxZipper, Syntax(..), Past, down)
 import Util.String (isDigit, spliceStr)
-import Lang (LangZipper, Internal(..), Leaf(..))
+import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
 
 stepLeft :: PathStep
@@ -41,14 +45,63 @@ instance actionIsForeign :: IsForeign Action where
       "backspace" -> pure Backspace
       _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
+leafKeywords :: Map String LangSyntax
+leafKeywords = map Leaf $ Map.fromFoldable
+  [ Tuple "true" (BoolLeaf true)
+  , Tuple "false" (BoolLeaf false)
+  , Tuple "type" TyTy
+  , Tuple "int" IntTy
+  , Tuple "bool" BoolTy
+  ]
+
+recognizeLeafKeyword :: String -> LangPast -> Path -> LangZipper
+recognizeLeafKeyword name past anchor =
+  let syntax = case Map.lookup name leafKeywords of
+        Just s -> s
+        Nothing -> unsafeThrow "inconsistency in recognizeLeafKeyword"
+  in { syntax
+     , past
+     , anchor: anchor .+ 1
+     , focus: anchor .+ 1
+     }
+
+internalKeywords :: Map String LangSyntax
+internalKeywords = Map.fromFoldable
+  [ Tuple "(" (Internal Parens [Hole ""])
+  , Tuple "+" (Internal Addition [Hole "", Hole ""])
+  , Tuple "if" (Internal IfThenElse [Hole "", Hole "", Hole ""])
+  , Tuple "==" (Internal Eq [Hole "", Hole ""])
+  , Tuple "->" (Internal ArrTy [Hole "", Hole ""])
+  ]
+
+recognizeInternalKeyword :: String -> LangPast -> Path -> LangZipper
+recognizeInternalKeyword name past anchor =
+  let syntax = case Map.lookup name internalKeywords of
+        Just s -> s
+        Nothing -> unsafeThrow "inconsistency in recognizeInternalKeyword"
+      start =
+        { syntax
+        , past
+        , anchor: anchor .+ 1
+        , focus: anchor .+ 1
+        }
+  in case down 0 start of
+       Just z -> z
+       Nothing -> unsafeThrow "inconsistency in recognizeInternalKeyword"
+
+-- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
 operate zipper@{anchor, focus} action = if anchor == focus
   then operateAtomic zipper action
   else Left "spanning actions not yet implemented"
 
--- TODO this should be part of the language definition
+-- filling a hole is easy
 operateAtomic :: LangZipper -> Action -> Either String LangZipper
 operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
+  | (name <> String.singleton char) `member` leafKeywords
+  = Right $ recognizeLeafKeyword (name <> String.singleton char) past z.anchor
+  | (name <> String.singleton char) `member` internalKeywords
+  = Right $ recognizeInternalKeyword (name <> String.singleton char) past z.anchor
   | name == "" && isDigit char =
       case I.fromString (String.singleton char) of
         Just n -> Right
@@ -58,36 +111,14 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
           , focus: z.anchor .+ 1
           }
         Nothing -> Left "inconsistency: unable to parse after inserting single digit"
-  | name == "" && char == '+' = Right
-      { syntax: Hole ""
-      , past: {value: Addition, otherChildren: [Hole ""], dir: stepLeft} : past
-      , anchor: PathOffset 0
-      , focus: PathOffset 0
-      }
-  | name == "" && char == '(' = Right
-      { syntax: Hole ""
-      , past: {value: Parens, otherChildren: [], dir: stepLeft} : past
-      , anchor: PathOffset 0
-      , focus: PathOffset 0
-      }
-  | name <> String.singleton char == "true" = Right
-    { syntax: Leaf (BoolLeaf true)
-    , past
-    , anchor: z.anchor .+ 1
-    , focus: z.anchor .+ 1
-    }
-  | name <> String.singleton char == "false" = Right
-    { syntax: Leaf (BoolLeaf false)
-    , past
-    , anchor: z.anchor .+ 1
-    , focus: z.anchor .+ 1
-    }
   | otherwise = Right
       { syntax: Hole (spliceStr name o 0 (String.singleton char))
       , past
       , anchor: z.anchor .+ 1
       , focus: z.anchor .+ 1
       }
+
+-- backspacing in a hole
 operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} Backspace
   -- TODO this should really step up and backspace
   | name == "" = Left "backspacing out of empty hole"
@@ -103,6 +134,8 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} Backspace
          , anchor: z.anchor .+ (-1)
          , focus: z.anchor .+ (-1)
          }
+
+-- editing a number
 operateAtomic z@{syntax: Leaf (IntLeaf n), past, anchor: PathOffset o} (Typing char)
   | char == '-' && o == 0
   = Right
