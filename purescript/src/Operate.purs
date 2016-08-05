@@ -46,6 +46,7 @@ operate zipper@{anchor, focus} action = if anchor == focus
   then operateAtomic zipper action
   else Left "spanning actions not yet implemented"
 
+-- TODO this should be part of the language definition
 operateAtomic :: LangZipper -> Action -> Either String LangZipper
 operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
   | name == "" && isDigit char =
@@ -88,6 +89,7 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
       , focus: z.anchor .+ 1
       }
 operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} Backspace
+  -- TODO this should really step up and backspace
   | name == "" = Left "backspacing out of empty hole"
   | o > length name
   = Left "inconsistency: backspacing with cursor past end of hole"
