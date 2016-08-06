@@ -1,6 +1,7 @@
 module Syntax where
 
 import Prelude
+import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Monad.Except
 import Data.Tuple
 import Template
@@ -52,7 +53,7 @@ class Lang internal leaf where
   normalize :: Syntax internal leaf -> Syntax internal leaf
 
   updateChildType :: Syntax internal leaf
-                  -> {no :: Int, newTm :: Syntax internal leaf, newTy :: Syntax internal leaf}
+                  -> {ix :: Int, newTm :: Syntax internal leaf, newTy :: Syntax internal leaf}
                   -> Syntax internal leaf
 
   constrainType :: {term :: Syntax internal leaf, newTy :: Syntax internal leaf}
@@ -61,7 +62,8 @@ class Lang internal leaf where
   infer :: Syntax internal leaf -> Syntax internal leaf
 
 data Syntax internal leaf
-  = Internal internal (Array (Syntax internal leaf))
+  -- We allow `Nothing` here *only* in the case we're looking inside a conflict
+  = Internal (Maybe internal) (Array (Syntax internal leaf))
   | Leaf leaf
   | Hole String
   | Conflict
@@ -78,7 +80,8 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
   read obj = do
     tag <- readProp "tag" obj
     case tag of
-      "internal" -> Internal <$> readProp "value" obj <*> readProp "children" obj
+      "internal" -> do
+         Internal <$> (Just <$> readProp "value" obj) <*> readProp "children" obj
       "leaf" -> Leaf <$> readProp "value" obj
       "hole" -> Hole <$> readProp "value" obj
       "conflict" -> do
@@ -103,7 +106,7 @@ type SyntaxZipper a b =
 
 newtype ZoomedSZ a b = ZoomedSZ (SyntaxZipper a b)
 
-type ZipperStep a b = {value :: a, otherChildren :: Array (Syntax a b), dir :: PathStep}
+type ZipperStep a b = {value :: Maybe a, otherChildren :: Array (Syntax a b), dir :: PathStep}
 
 type Past a b = List (ZipperStep a b)
 
@@ -116,37 +119,48 @@ followPath :: forall a b. Syntax a b -> Path -> Syntax a b
 followPath syntax path = case syntax of
   Leaf _ -> syntax
   Hole _ -> syntax
-  Conflict _ -> syntax
+  Conflict _ -> case path of
+    PathCons dir tail -> followPath (_.value (conflictIx dir syntax)) tail
+    PathOffset _ -> syntax
   Internal value children -> case path of
     PathCons dir tail -> followPath (unsafePartial (unsafeIndex children dir)) tail
     PathOffset _ -> syntax
+
+conflictIx :: forall a b. Int
+           -> Syntax a b
+           -> {value :: Syntax a b, otherChildren :: Array (Syntax a b)}
+conflictIx i (Conflict {term, expectedTy, actualTy}) = case i of
+  0 -> {value: term, otherChildren: [expectedTy, actualTy]}
+  1 -> {value: expectedTy, otherChildren: [term, actualTy]}
+  2 -> {value: actualTy, otherChildren: [term, expectedTy]}
+  n -> unsafeThrow $ "unexpected index into Conflict: " <> show n
+conflictIx _ tm = unsafeThrow "unexpected conflictIx"
 
 zoomIn :: forall a b. SyntaxZipper a b -> ZoomedSZ a b
 zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
   Leaf _ -> ZoomedSZ zipper
   Hole _ -> ZoomedSZ zipper
-  Conflict _ -> ZoomedSZ zipper
-    -- TODO
-    -- if pathHead anchor == pathHead focus
-    -- then
-    --   let go = do
-    --         let children = [l, r]
-    --         {head: dir, tail: aTail} <- pathUncons anchor
-    --         {tail: fTail} <- pathUncons focus
-    --         pure $ zoomIn
-    --           { syntax: unsafePartial (unsafeIndex children dir)
-    --           , past:
-    --             { value: Eq -- XXX hack because we need a value here
-    --             , otherChildren: spliceArr children dir 1 []
-    --             , dir
-    --             } : past
-    --           , anchor: aTail
-    --           , focus: fTail
-    --           }
-    --   in case go of
-    --        Just zoomed -> zoomed
-    --        Nothing -> ZoomedSZ zipper
-    -- else ZoomedSZ zipper
+  Conflict {term, expectedTy, actualTy} ->
+    if pathHead anchor == pathHead focus
+    then
+      let go = do
+            {head: dir, tail: aTail} <- pathUncons anchor
+            {tail: fTail} <- pathUncons focus
+            let children = conflictIx dir syntax
+            pure $ zoomIn
+              { syntax: children.value
+              , past:
+                { value: Nothing
+                , otherChildren: children.otherChildren
+                , dir
+                } : past
+              , anchor: aTail
+              , focus: fTail
+              }
+      in case go of
+           Just zoomed -> zoomed
+           Nothing -> ZoomedSZ zipper
+    else ZoomedSZ zipper
   Internal value children ->
     if pathHead anchor == pathHead focus
     then
@@ -183,7 +197,11 @@ up {syntax, past, anchor, focus} = do
   -- graft the other side back on, track the size we're adding on the left so
   -- we can add it to the selection offsets
   let children = spliceArr otherChildren dir 0 [syntax]
-      newSyntax = Internal value children
+      newSyntax = case value of
+        Just value' -> Internal value children
+        Nothing -> case children of
+          [term, expectedTy, actualTy] -> Conflict {term, expectedTy, actualTy}
+          _ -> unsafeThrow "deeply broken up"
   let zipper =
         { syntax: newSyntax
         , past: tail

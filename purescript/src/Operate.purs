@@ -59,7 +59,8 @@ recognizeLeafKeyword name past anchor =
   let syntax = case Map.lookup name leafKeywords of
         Just s -> s
         Nothing -> unsafeThrow "inconsistency in recognizeLeafKeyword"
-      z = { syntax: Hole "" -- TODO this is a small hack -- would be better to reuse the old zipper (and old zipper's hole)
+      -- TODO this is a small hack -- would be better to reuse the old zipper (and old zipper's hole)
+      z = { syntax: Hole "to be filled by leaf keyword"
           , past
           , anchor: anchor .+ 1
           , focus: anchor .+ 1
@@ -68,11 +69,11 @@ recognizeLeafKeyword name past anchor =
 
 internalKeywords :: Map String LangSyntax
 internalKeywords = Map.fromFoldable
-  [ Tuple "(" (Internal Parens [Hole "_"])
-  , Tuple "+" (Internal Addition [Hole "_", Hole "_"])
-  , Tuple "if" (Internal IfThenElse [Hole "_", Hole "_", Hole "_"])
-  , Tuple "==" (Internal Eq [Hole "_", Hole "_"])
-  , Tuple "->" (Internal ArrTy [Hole "_", Hole "_"])
+  [ Tuple "(" (Internal (Just Parens) [Hole "_"])
+  , Tuple "+" (Internal (Just Addition) [Hole "_", Hole "_"])
+  , Tuple "if" (Internal (Just IfThenElse) [Hole "_", Hole "_", Hole "_"])
+  , Tuple "==" (Internal (Just Eq) [Hole "_", Hole "_"])
+  , Tuple "->" (Internal (Just ArrTy) [Hole "_", Hole "_"])
   ]
 
 recognizeInternalKeyword :: String -> LangPast -> Path -> LangZipper
@@ -117,7 +118,7 @@ propose syntax z =
      -- okay, we have differing types:
      -- * try to push this type up the tree with `updateChildType`
      else case up z of
-       Just {zipper: z', prevLoc} -> case updateChildType z'.syntax {no: prevLoc, newTm: syntax, newTy: inferredTy} of
+       Just {zipper: z', prevLoc} -> case updateChildType z'.syntax {ix: prevLoc, newTm: syntax, newTy: inferredTy} of
          c@(Conflict _) ->
            let result = zoomIn $
                  z' { syntax = c

@@ -84,25 +84,25 @@ normalizeChildren arr =
 -- | Normalize as much as possible. Indicates non-full normalization with a `Left`
 -- TODO Norm monad
 norm :: LangSyntax -> Either LangSyntax LangSyntax
-norm i@(Internal Addition [l, r]) = case normalizeChildren [l, r] of
+norm i@(Internal (Just Addition) [l, r]) = case normalizeChildren [l, r] of
   Right [Leaf (IntLeaf a), Leaf (IntLeaf b)] -> Right $ Leaf (IntLeaf (a + b))
   Right _ -> unsafeThrow "norm Addition inconsistency"
-  Left children' -> Left $ Internal Addition children'
-norm (Internal IfThenElse [i, l, r]) = case normalizeChildren [i, l, r] of
+  Left children' -> Left $ Internal (Just Addition) children'
+norm (Internal (Just IfThenElse) [i, l, r]) = case normalizeChildren [i, l, r] of
   Right [Leaf (BoolLeaf i'), Leaf (IntLeaf a), Leaf (IntLeaf b)] ->
     Right $ Leaf $ IntLeaf $ if i' then a else b
   Right [Leaf (BoolLeaf i'), Leaf (BoolLeaf a), Leaf (BoolLeaf b)] ->
     Right $ Leaf $ BoolLeaf $ if i' then a else b
   Right [Leaf (BoolLeaf _), _, _] -> unsafeThrow "non-matching if-then-else branches"
   Right _ -> unsafeThrow "if branching on non-boolean"
-  Left children' -> Left $ Internal IfThenElse children'
-norm (Internal Parens [x]) = norm x
-norm i@(Internal Eq [x, y]) = case normalizeChildren [x, y] of
+  Left children' -> Left $ Internal (Just IfThenElse) children'
+norm (Internal (Just Parens) [x]) = norm x
+norm i@(Internal (Just Eq) [x, y]) = case normalizeChildren [x, y] of
   Right [Leaf (IntLeaf a), Leaf (IntLeaf b)] -> Right $ Leaf (BoolLeaf (a == b))
   Right [Leaf (BoolLeaf a), Leaf (BoolLeaf b)] -> Right $ Leaf (BoolLeaf (a == b))
   Right [x', y'] -> unsafeThrow $ "comparison type error (" <> show x' <> "), (" <> show y' <> ")"
   Right _ -> unsafeThrow "norm Eq inconsistency"
-  Left children' -> Left $ Internal Eq children'
+  Left children' -> Left $ Internal (Just Eq) children'
 norm l@(Leaf _) = Right l
 norm h@(Hole _) = Left h
 norm c@(Conflict _) = Left c
@@ -114,13 +114,14 @@ norm' = norm >>> either id id
 
 inf :: LangSyntax -> LangSyntax
 -- Making the assumption that it's well-typed
-inf (Internal IfThenElse [_, l, _]) = inf l
-inf (Internal IfThenElse _) = unsafeThrow "deeply broken inf (Internal IfThenElse _)"
-inf (Internal Addition _) = Leaf IntTy
-inf (Internal Parens [x]) = inf x
-inf (Internal Parens _) = unsafeThrow "deeply broken inf (Internal Parens _)"
-inf (Internal Eq _) = Leaf BoolTy
-inf (Internal ArrTy _) = Leaf TyTy
+inf (Internal (Just IfThenElse) [_, l, _]) = inf l
+inf (Internal (Just IfThenElse) _) = unsafeThrow "deeply broken inf (Internal IfThenElse _)"
+inf (Internal (Just Addition) _) = Leaf IntTy
+inf (Internal (Just Parens) [x]) = inf x
+inf (Internal (Just Parens) _) = unsafeThrow "deeply broken inf (Internal Parens _)"
+inf (Internal (Just Eq) _) = Leaf BoolTy
+inf (Internal (Just ArrTy) _) = Leaf TyTy
+inf (Internal Nothing _) = unsafeThrow "deeply broken inf (Internal Nothing _)"
 inf (Leaf (BoolLeaf _)) = Leaf BoolTy
 inf (Leaf (IntLeaf _)) = Leaf IntTy
 inf (Leaf IntTy) = Leaf TyTy
@@ -148,31 +149,31 @@ unify u@(Leaf (IntLeaf x)) (Leaf (IntLeaf y)) =
   if x == y then Just u else Nothing
 
 -- internal nodes a bit harder
-unify (Internal Parens [x]) r = unify x r
-unify l (Internal Parens [x]) = unify l x
+unify (Internal (Just Parens) [x]) r = unify x r
+unify l (Internal (Just Parens) [x]) = unify l x
 
-unify (Internal ArrTy [l1, r1]) (Internal ArrTy [l2, r2]) =
-  (\l r -> Internal ArrTy [l, r]) <$> unify l1 l2 <*> unify r1 r2
+unify (Internal (Just ArrTy) [l1, r1]) (Internal (Just ArrTy) [l2, r2]) =
+  (\l r -> Internal (Just ArrTy) [l, r]) <$> unify l1 l2 <*> unify r1 r2
 
 -- these need to be reduced
-unify x@(Internal IfThenElse _) r = case norm' x of
-  Internal IfThenElse _ -> Nothing
+unify x@(Internal (Just IfThenElse) _) r = case norm' x of
+  Internal (Just IfThenElse) _ -> Nothing
   x' -> unify x' r
-unify x@(Internal Addition _) r = case norm' x of
-  Internal Addition _ -> Nothing
+unify x@(Internal (Just Addition) _) r = case norm' x of
+  Internal (Just Addition) _ -> Nothing
   x' -> unify x' r
-unify x@(Internal Eq _) r = case norm' x of
-  Internal Eq _ -> Nothing
+unify x@(Internal (Just Eq) _) r = case norm' x of
+  Internal (Just Eq) _ -> Nothing
   x' -> unify x' r
 
-unify l x@(Internal IfThenElse _) = case norm' x of
-  Internal IfThenElse _ -> Nothing
+unify l x@(Internal (Just IfThenElse) _) = case norm' x of
+  Internal (Just IfThenElse) _ -> Nothing
   x' -> unify l x'
-unify l x@(Internal Addition _) = case norm' x of
-  Internal IfThenElse _ -> Nothing
+unify l x@(Internal (Just Addition) _) = case norm' x of
+  Internal (Just IfThenElse) _ -> Nothing
   x' -> unify l x'
-unify l x@(Internal Eq _) = case norm' x of
-  Internal IfThenElse _ -> Nothing
+unify l x@(Internal (Just Eq) _) = case norm' x of
+  Internal (Just IfThenElse) _ -> Nothing
   x' -> unify l x'
 
 unify (Hole _) r = Just r
@@ -184,34 +185,39 @@ unify (Conflict _) _ = Nothing
 unify _ _ = Nothing
 
 -- | This node's child changed types -- update accordingly.
-updateChildType :: LangSyntax -> {no :: Int, newTm :: LangSyntax, newTy :: LangSyntax} -> LangSyntax
-updateChildType term {no, newTm, newTy} =
+updateChildType :: LangSyntax -> {ix :: Int, newTm :: LangSyntax, newTy :: LangSyntax} -> LangSyntax
+updateChildType term {ix, newTm, newTy} =
   let expectedTy = case term of
-        Internal IfThenElse [c, l, r] -> case no of
+        Internal (Just IfThenElse) [c, l, r] -> case ix of
           0 -> bool
           1 -> infer r
           2 -> infer l
-          _ -> unsafeThrow $ "deeply broken updateChildType (Internal IfThenElse), ix: " <> show no
-        Internal IfThenElse _ -> unsafeThrow "deeply broken inf (Internal IfThenElse _)"
-        Internal Addition [l, r] -> int
-        Internal Addition _ -> unsafeThrow "deeply broken inf (Internal Addition _)"
-        Internal Parens [x] -> term
-        Internal Parens _ -> unsafeThrow "deeply broken inf (Internal Parens _)"
-        Internal Eq [l, r] -> case no of
+          _ -> unsafeThrow $ "deeply broken updateChildType (Internal IfThenElse), ix: " <> show ix
+        Internal (Just IfThenElse) _ -> unsafeThrow "deeply broken inf (Internal IfThenElse _)"
+        Internal (Just Addition) [l, r] -> int
+        Internal (Just Addition) _ -> unsafeThrow "deeply broken inf (Internal Addition _)"
+        Internal (Just Parens) [x] -> term
+        Internal (Just Parens) _ -> unsafeThrow "deeply broken inf (Internal Parens _)"
+        Internal (Just Eq) [l, r] -> case ix of
           0 -> infer r
           1 -> infer l
-          _ -> unsafeThrow $ "deeply broken updateChildType (Internal Eq), ix: " <> show no
-        Internal Eq _ -> unsafeThrow "deeply broken inf (Internal Eq _)"
-        Internal ArrTy [l, r] -> ty
-        Internal ArrTy _ -> unsafeThrow "deeply broken updateChildType (Internal ArrTy _)"
+          _ -> unsafeThrow $ "deeply broken updateChildType (Internal Eq), ix: " <> show ix
+        Internal (Just Eq) _ -> unsafeThrow "deeply broken inf (Internal Eq _)"
+        Internal (Just ArrTy) [l, r] -> ty
+        Internal (Just ArrTy) _ -> unsafeThrow "deeply broken updateChildType (Internal ArrTy _)"
+        Internal Nothing [term, acTy, exTy] -> exTy
+        Internal Nothing _ -> unsafeThrow "deeply broken updateChildType (Internal Nothing _)"
         Leaf _ -> unsafeThrow "deeply broken updateChildType (Leaf _)"
         Hole _ -> unsafeThrow "deeply broken updateChildType (Hole _)"
-        Conflict _ -> unsafeThrow "updateChildType not yet implemented for Conflict"
+        Conflict {expectedTy} -> expectedTy
       -- TODO pull out extra information!
       child = case unify newTy expectedTy of
         Just _ -> newTm
         _ -> Conflict {term: newTm, expectedTy, actualTy: newTy}
-  in unsafeUpdateChild {term, child} no
+  in case term of
+       -- replace it with the conflict or non-conflict we found
+       Conflict _ -> child
+       _ -> unsafeUpdateChild {term, child} ix
 
 constrainType :: {term :: LangSyntax, newTy :: LangSyntax} -> LangSyntax
 constrainType {term, newTy} = unsafeThrow "constrainType not yet implemented"
@@ -227,11 +233,13 @@ instance intBoolIsLang :: Lang Internal Leaf where
 
   getInternalTemplate i = case i of
     Internal tag _ -> mkTemplate $ case tag of
-      IfThenElse -> "if {} then {} else {}"
-      Addition -> "{} + {}"
-      Parens -> "({})"
-      Eq -> "{} == {}"
-      ArrTy -> "{} -> {}"
+      Just IfThenElse -> "if {} then {} else {}"
+      Just Addition -> "{} + {}"
+      Just Parens -> "({})"
+      Just Eq -> "{} == {}"
+      Just ArrTy -> "{} -> {}"
+      -- TODO determine if we can remove the template in Main.purs for this one
+      Nothing -> "conflict: {{}: expected {} vs actual {}}"
     _ -> unsafeThrow "inconsistency: couldn't get internal template"
 
   normalize = norm'
