@@ -2,31 +2,29 @@ module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> (Syntax, ContentState)`
 
 import Prelude
-import Template
-import Util
-import Data.Array as Array
+import Template (LightInline, InlineInfo, LightInlineType(..), interpolateTemplate, mkTemplate, inlineSelection)
+import Util (iForM, whenJust)
+import Data.Array (snoc, (..), (:))
 import Data.List as List
 import Data.Map as Map
 import Data.String as String
 import Operate as Operate
 import Control.Monad.State (State, modify, get, evalState, execState)
-import Data.Array ((:), concatMap, snoc, (..))
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), either)
+import Data.Either (Either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class IsForeign, read, readProp)
-import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
+import Data.Foreign.Generic (readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Generic (class Generic)
 import Data.Map (Map)
-import Data.Maybe (Maybe(Just, Nothing), maybe)
+import Data.Maybe (Maybe(Just), maybe)
 import Data.Traversable (sequence)
 import Path (Path, PathStep, subPath, getOffset)
-import Syntax (class Lang, getInternalTemplate, getLeafTemplate, normalize, ZoomedSZ(ZoomedSZ), SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
+import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, followPath, zoomIn, syntaxHoles, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Generic (myOptions)
-import Data.Tuple
-import Lang (LangZipper, LangSyntax, ZoomedLang, Internal(..), Leaf(..))
+import Lang (LangZipper, LangSyntax, ZoomedLang, Internal, Leaf)
 
 
 type EntityRange =
