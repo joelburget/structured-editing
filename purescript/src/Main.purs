@@ -3,7 +3,7 @@ module Main where
 
 import Prelude
 import Template
-import Util.String
+import Util
 import Data.Array as Array
 import Data.List as List
 import Data.Map as Map

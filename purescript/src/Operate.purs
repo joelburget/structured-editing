@@ -18,7 +18,7 @@ import Data.Tuple (Tuple(..))
 
 import Path (Path(..), (.+), PathStep)
 import Syntax (SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, updateChildType, constrainType, zoomIn, ZoomedSZ(..))
-import Util.String (isDigit, spliceStr, spliceArr)
+import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
 

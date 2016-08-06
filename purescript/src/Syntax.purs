@@ -4,7 +4,7 @@ import Prelude
 import Control.Monad.Except
 import Data.Tuple
 import Template
-import Util.String
+import Util
 import Data.List as List
 import Control.Monad.State (State, StateT, modify, get, put, evalState, evalStateT, runState)
 import Data.Array.Partial (unsafeIndex)

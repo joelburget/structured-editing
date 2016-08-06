@@ -12,7 +12,7 @@ import Data.Tuple
 import Syntax
 import Template
 import Path
-import Util.String (spliceArr)
+import Util (spliceArr)
 
 
 data IntBoolLang = IntBoolLang
