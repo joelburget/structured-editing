@@ -59,13 +59,14 @@ mkTemplate = split "{}" >>> map TemplateStr >>> intersperse TemplateHole >>> fil
 type AccumState = {fillers :: Array (Array LightInline), pos :: Int}
 
 interpolateTemplate :: Template
+                    -> LightInlineType
                     -> TemplateMeta
                     -> Array (Array LightInline)
                     -> Maybe (Array LightInline)
-interpolateTemplate template {key, anchorOffset, focusOffset} fillers =
+interpolateTemplate template ty {key, anchorOffset, focusOffset} fillers =
   let mkPiece :: Int -> String -> Array LightInline
       mkPiece start content = pure
-        { ty: InlineInternal
+        { ty
         , key
         , content
         , info: inlineSelection start (length content) anchorOffset focusOffset
@@ -76,12 +77,12 @@ interpolateTemplate template {key, anchorOffset, focusOffset} fillers =
          -> Accum AccumState (Maybe (Array LightInline))
       go accum piece = case piece of
         TemplateHole -> case Array.uncons accum.fillers of
-          Just {head, tail} -> 
+          Just {head, tail} ->
             {accum: {fillers: tail, pos: accum.pos}, value: Just head}
           -- fail because we couldn't find a string to fill the hole
           Nothing ->
             {accum, value: Nothing}
-        TemplateStr str -> 
+        TemplateStr str ->
           { accum: {fillers: accum.fillers, pos: accum.pos + length str}
           , value: Just (mkPiece accum.pos str)
           }

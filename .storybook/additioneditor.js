@@ -111,6 +111,37 @@ storiesOf('AdditionEditor', module)
         />
     );
   })
+  .add('false == _|', () => {
+    const selectSyntax = {
+      syntax: {
+        tag: 'internal',
+        value: 'eq',
+        children: [
+          {
+            tag: 'leaf',
+            value: {
+              tag: 'bool',
+              value: false,
+            },
+          },
+          {
+            tag: 'hole',
+            value: "_",
+          },
+        ]
+      },
+
+      // point to the start of the block
+      anchor: 10,
+      focus: 10,
+    };
+    return (
+        <StatefulAdditionEditor
+      onChange={onChange}
+      selectSyntax={selectSyntax}
+        />
+    );
+  })
   .add('|1 + 1', () => {
     const selectSyntax = {
       syntax: {

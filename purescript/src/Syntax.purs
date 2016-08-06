@@ -51,15 +51,24 @@ class Lang internal leaf where
   -- small-step semantics rather than a big-step all-at-once evaluation
   normalize :: Syntax internal leaf -> Syntax internal leaf
 
-  -- point in all directions
-  -- TODO more accurately a set
-  constrainNeighbors :: Syntax internal leaf -> Array (Constraint internal leaf)
+  updateChildType :: Syntax internal leaf
+                  -> {no :: Int, newTm :: Syntax internal leaf, newTy :: Syntax internal leaf}
+                  -> Syntax internal leaf
+
+  constrainType :: {term :: Syntax internal leaf, newTy :: Syntax internal leaf}
+                -> Syntax internal leaf
+
+  infer :: Syntax internal leaf -> Syntax internal leaf
 
 data Syntax internal leaf
   = Internal internal (Array (Syntax internal leaf))
   | Leaf leaf
   | Hole String
-  | Conflict (Syntax internal leaf) (Syntax internal leaf)
+  | Conflict
+    { term :: Syntax internal leaf
+    , expectedTy :: Syntax internal leaf
+    , actualTy :: Syntax internal leaf
+    }
 
 derive instance genericSyntax :: (Generic a, Generic b) => Generic (Syntax a b)
 instance showSyntax :: (Generic a, Generic b) => Show (Syntax a b) where show = gShow
@@ -72,14 +81,18 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
       "internal" -> Internal <$> readProp "value" obj <*> readProp "children" obj
       "leaf" -> Leaf <$> readProp "value" obj
       "hole" -> Hole <$> readProp "value" obj
-      "conflict" -> Conflict <$> readProp "left" obj <*> readProp "right" obj
+      "conflict" -> do
+        term <-readProp "term" obj
+        expectedTy <- readProp "expectedTy" obj
+        actualTy <- readProp "actualTy" obj
+        pure (Conflict {term, expectedTy, actualTy})
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
 syntaxHoles :: forall a b. Syntax a b -> Array String
 syntaxHoles (Internal _ children) = children >>= syntaxHoles
 syntaxHoles (Leaf _) = []
 syntaxHoles (Hole name) = [name]
-syntaxHoles (Conflict _ _) = []
+syntaxHoles (Conflict {term}) = syntaxHoles term
 
 type SyntaxZipper a b =
   { syntax :: Syntax a b
@@ -103,7 +116,7 @@ followPath :: forall a b. Syntax a b -> Path -> Syntax a b
 followPath syntax path = case syntax of
   Leaf _ -> syntax
   Hole _ -> syntax
-  Conflict _ _ -> syntax
+  Conflict _ -> syntax
   Internal value children -> case path of
     PathCons dir tail -> followPath (unsafePartial (unsafeIndex children dir)) tail
     PathOffset _ -> syntax
@@ -112,7 +125,28 @@ zoomIn :: forall a b. SyntaxZipper a b -> ZoomedSZ a b
 zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
   Leaf _ -> ZoomedSZ zipper
   Hole _ -> ZoomedSZ zipper
-  Conflict _ _ -> ZoomedSZ zipper
+  Conflict _ -> ZoomedSZ zipper
+    -- TODO
+    -- if pathHead anchor == pathHead focus
+    -- then
+    --   let go = do
+    --         let children = [l, r]
+    --         {head: dir, tail: aTail} <- pathUncons anchor
+    --         {tail: fTail} <- pathUncons focus
+    --         pure $ zoomIn
+    --           { syntax: unsafePartial (unsafeIndex children dir)
+    --           , past:
+    --             { value: Eq -- XXX hack because we need a value here
+    --             , otherChildren: spliceArr children dir 1 []
+    --             , dir
+    --             } : past
+    --           , anchor: aTail
+    --           , focus: fTail
+    --           }
+    --   in case go of
+    --        Just zoomed -> zoomed
+    --        Nothing -> ZoomedSZ zipper
+    -- else ZoomedSZ zipper
   Internal value children ->
     if pathHead anchor == pathHead focus
     then
@@ -141,21 +175,22 @@ getPast :: forall a b. SyntaxZipper a b -> Past a b
 getPast {past} = past
 
 zipUp :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
-zipUp tz = maybe tz zipUp (up tz)
+zipUp tz = maybe tz zipUp (_.zipper <$> up tz)
 
-up :: forall a b. SyntaxZipper a b -> Maybe (SyntaxZipper a b)
+up :: forall a b. SyntaxZipper a b -> Maybe {zipper :: SyntaxZipper a b, prevLoc :: PathStep}
 up {syntax, past, anchor, focus} = do
   {head: {dir, otherChildren, value}, tail} <- List.uncons past
   -- graft the other side back on, track the size we're adding on the left so
   -- we can add it to the selection offsets
   let children = spliceArr otherChildren dir 0 [syntax]
       newSyntax = Internal value children
-  pure
-    { syntax: newSyntax
-    , past: tail
-    , anchor: PathCons dir anchor
-    , focus: PathCons dir focus
-    }
+  let zipper =
+        { syntax: newSyntax
+        , past: tail
+        , anchor: PathCons dir anchor
+        , focus: PathCons dir focus
+        }
+  pure {zipper, prevLoc: dir}
 
 type ZipperSelection a b r = {anchor :: Path, focus :: Path | r}
 
@@ -248,16 +283,30 @@ consumePath i@(Internal _ children) = do
 
   pure unit
 
--- {[left] vs [right]}
-consumePath (Conflict left right) = do
+-- conflict: {[term]: expected [left] vs actual [right]}
+consumePath (Conflict {term, expectedTy, actualTy}) =
+  -- TODO so much duplication from above here
+  -- might make sense for Conflict to be an Internal node.
   let checkAndModify str = do
+        (ConsumedInPreviousChunks prev) <- get
         let len = length str
-        i <- get
-        when (i <= len) (throwR (PathOffset i))
-        modify (_ + len) -- "}"
+        offset <- lift $ lift $ get
+        if offset <= len
+          then lift $ throwR (PathOffset (prev + offset))
+          else do lift $ lift $ modify (_ - len)
+                  put $ ConsumedInPreviousChunks (prev + len)
 
-  checkAndModify "}"
-  withExceptT (rmap (PathCons 0)) (consumePath left)
-  checkAndModify " vs "
-  withExceptT (rmap (PathCons 1)) (consumePath right)
-  checkAndModify "}"
+      yieldsPiece :: StateT ConsumedInPreviousChunks
+                     (ExceptT (Either String Path)
+                     (State Int))
+                     Unit
+      yieldsPiece = do
+        checkAndModify "conflict: {"
+        lift $ withExceptT (rmap (PathCons 0)) (consumePath term)
+        checkAndModify ": expected "
+        lift $ withExceptT (rmap (PathCons 1)) (consumePath expectedTy)
+        checkAndModify " vs actual "
+        lift $ withExceptT (rmap (PathCons 2)) (consumePath actualTy)
+        checkAndModify "}"
+
+  in evalStateT yieldsPiece (ConsumedInPreviousChunks 0)

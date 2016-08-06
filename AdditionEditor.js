@@ -56,6 +56,11 @@ const entityTypes = {
     mutability: 'MUTABLE',
     data: {type: 'plus'},
   },
+  conflict: {
+    type: 'TOKEN',
+    mutability: 'MUTABLE',
+    data: {type: 'conflict'},
+  },
 };
 
 const components = {
@@ -71,6 +76,9 @@ const components = {
     // TODO
     // {React.Children.only(children)}
     <span style={styles.hole}>{children}</span>
+  ),
+  conflict: ({children}) => (
+      <span style={styles.conflict}>{children}</span>
   ),
 };
 
@@ -325,6 +333,9 @@ const styles = {
     backgroundColor: 'rgba(0, 0, 255, 0.09)',
   },
   hole: {
+    backgroundColor: 'rgba(255, 177, 0, 0.25)',
+  },
+  conflict: {
     backgroundColor: 'rgba(255, 0, 0, 0.09)',
   },
 };

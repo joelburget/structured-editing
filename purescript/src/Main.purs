@@ -20,7 +20,7 @@ import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGener
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Generic (class Generic)
 import Data.Map (Map)
-import Data.Maybe (Maybe(Just, Nothing))
+import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
 import Path (Path, PathStep, subPath, getOffset)
 import Syntax (class Lang, getInternalTemplate, getLeafTemplate, normalize, ZoomedSZ(ZoomedSZ), SyntaxZipper, Syntax(..), zoomIn, makePath, zipUp, syntaxHoles, followPath)
@@ -150,10 +150,8 @@ contentFromSyntax syntax anchor focus = do
           }
 
       -- XXX should be able to actually fail here
-      let preInlines = interpolateTemplate template {key: myId, anchorOffset, focusOffset} (map _.inlines children')
-      let inlines = case preInlines of
-            Just x -> x
-            Nothing -> []
+      let preInlines = interpolateTemplate template InlineInternal {key: myId, anchorOffset, focusOffset} (map _.inlines children')
+          inlines = maybe [] id preInlines
 
       let ids = Map.insert myId [] (Map.unions (map _.ids children'))
       pure {inlines, ids}
@@ -173,14 +171,16 @@ contentFromSyntax syntax anchor focus = do
           ids = Map.singleton myId []
      in pure {inlines, ids}
 
-    Conflict l r ->
-      let inlines = [
-          -- XXX
-          {-- {ty: InlineConflict, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset} --}
-          {-- {ty: InlineConflict, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset} --}
-          ]
-          ids = Map.singleton myId []
-      in pure {inlines, ids}
+    Conflict {term, expectedTy, actualTy} -> do
+      {inlines: termInlines, ids: termIds} <- contentFromSyntax term (subPath 0 anchor) (subPath 0 focus)
+      {inlines: expectedInlines, ids: expectedIds} <- contentFromSyntax expectedTy (subPath 1 anchor) (subPath 1 focus)
+      {inlines: actualInlines, ids: actualIds} <- contentFromSyntax actualTy (subPath 2 anchor) (subPath 2 focus)
+
+      let template = mkTemplate "conflict: {{}: expected {} vs actual {}}"
+          preInlines = interpolateTemplate template InlineConflict {key: myId, anchorOffset, focusOffset} [termInlines, expectedInlines, actualInlines]
+          inlines = maybe [] id preInlines
+          ids = Map.insert myId [] (Map.unions [termIds, expectedIds, actualIds])
+      pure {inlines, ids}
 
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
@@ -297,6 +297,9 @@ listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
 
 listAllHoles :: Fn1 LangZipper (Array String)
 listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
+
+-- listAllConflicts :: Fn1 LangZipper (Array String)
+-- listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
 
 type SelectionInfo =
   { anchorInfo :: String
