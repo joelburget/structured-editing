@@ -32,11 +32,6 @@ throwR :: forall e1 e2 m a. Applicative m => e2 -> ExceptT (Either e1 e2) m a
 throwR = ExceptT <<< pure <<< Left <<< Right
 
 
-data Constraint internal leaf
-  = UnifyLocs ConstraintPath ConstraintPath
-  | UnifyWith ConstraintPath (Syntax internal leaf)
-
-
 class Lang internal leaf where
   getLeafTemplate :: Syntax internal leaf -> String
   getInternalTemplate :: Syntax internal leaf -> Template
