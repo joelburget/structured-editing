@@ -22,9 +22,6 @@ import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
 
-stepLeft :: PathStep
-stepLeft = 0
-
 data Action
   = Backspace
   | Typing Char
