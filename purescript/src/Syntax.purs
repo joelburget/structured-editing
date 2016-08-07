@@ -98,6 +98,10 @@ data ZipperValue a
   = InternalValue a
   | ConflictValue
 
+derive instance genericZipperValue :: Generic a => Generic (ZipperValue a)
+instance showZipperValue :: Generic a => Show (ZipperValue a) where show = gShow
+instance eqZipperValue :: Generic a => Eq (ZipperValue a) where eq = gEq
+
 type ZipperStep a b =
   { value :: ZipperValue a
   , otherChildren :: Array (Syntax a b)

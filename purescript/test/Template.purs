@@ -11,6 +11,7 @@ import Test.Unit.Main (runTest)
 import Test.Unit.Assert as Assert
 
 import Template
+import Lang
 
 newtype LIEq = LIEq LightInline
 instance lieq :: Eq LIEq where
@@ -21,6 +22,9 @@ instance lieq :: Eq LIEq where
     && li1.info.focus == li2.info.focus
 instance showLIEq :: Show LIEq where
   show _ = "LIEq TODO"
+
+additionTemplate :: Template
+additionTemplate = mkTemplate "{} + {}"
 
 assertTemplateEq :: forall e. Array LightInline
                  -> Maybe (Array LightInline)
@@ -33,7 +37,7 @@ mkTemplateSuite = suite "mkTemplate" do
   test "{} + {}" do
     Assert.equal
       [TemplateHole, TemplateStr " + ", TemplateHole]
-      (mkTemplate "{} + {}")
+      additionTemplate
 
 templateSuite = suite "templating" do
   test "0 + 1" do
@@ -51,4 +55,4 @@ templateSuite = suite "templating" do
         }
       , r
       ]
-      (interpolateTemplate additionTemplate {key: 1, anchorOffset: Nothing, focusOffset: Nothing} children)
+      (interpolateTemplate additionTemplate InlineInternal {key: 1, anchorOffset: Nothing, focusOffset: Nothing} children)

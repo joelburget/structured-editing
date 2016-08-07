@@ -6,6 +6,7 @@ import Data.Tuple
 import Operate
 import Path
 import Syntax
+import Lang
 import Data.List as List
 import Test.Unit.Assert as Assert
 import Control.Monad.Eff (Eff)
