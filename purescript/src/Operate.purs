@@ -66,11 +66,11 @@ recognizeLeafKeyword name past anchor =
 
 internalKeywords :: Map String LangSyntax
 internalKeywords = Map.fromFoldable
-  [ Tuple "(" (Internal (Just Parens) [Hole "_"])
-  , Tuple "+" (Internal (Just Addition) [Hole "_", Hole "_"])
-  , Tuple "if" (Internal (Just IfThenElse) [Hole "_", Hole "_", Hole "_"])
-  , Tuple "==" (Internal (Just Eq) [Hole "_", Hole "_"])
-  , Tuple "->" (Internal (Just ArrTy) [Hole "_", Hole "_"])
+  [ Tuple "(" (Internal Parens [Hole "_"])
+  , Tuple "+" (Internal Addition [Hole "_", Hole "_"])
+  , Tuple "if" (Internal IfThenElse [Hole "_", Hole "_", Hole "_"])
+  , Tuple "==" (Internal Eq [Hole "_", Hole "_"])
+  , Tuple "->" (Internal ArrTy [Hole "_", Hole "_"])
   ]
 
 recognizeInternalKeyword :: String -> LangPast -> Path -> LangZipper

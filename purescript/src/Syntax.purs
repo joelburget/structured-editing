@@ -51,7 +51,7 @@ class Lang internal leaf where
 
 data Syntax internal leaf
   -- We allow `Nothing` here *only* in the case we're looking inside a conflict
-  = Internal (Maybe internal) (Array (Syntax internal leaf))
+  = Internal internal (Array (Syntax internal leaf))
   | Leaf leaf
   | Hole String
   | Conflict
@@ -69,7 +69,7 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
     tag <- readProp "tag" obj
     case tag of
       "internal" -> do
-         Internal <$> (Just <$> readProp "value" obj) <*> readProp "children" obj
+         Internal <$> readProp "value" obj <*> readProp "children" obj
       "leaf" -> Leaf <$> readProp "value" obj
       "hole" -> Hole <$> readProp "value" obj
       "conflict" -> do
@@ -94,7 +94,15 @@ type SyntaxZipper a b =
 
 newtype ZoomedSZ a b = ZoomedSZ (SyntaxZipper a b)
 
-type ZipperStep a b = {value :: Maybe a, otherChildren :: Array (Syntax a b), dir :: PathStep}
+data ZipperValue a
+  = InternalValue a
+  | ConflictValue
+
+type ZipperStep a b =
+  { value :: ZipperValue a
+  , otherChildren :: Array (Syntax a b)
+  , dir :: PathStep
+  }
 
 type Past a b = List (ZipperStep a b)
 
@@ -138,7 +146,7 @@ zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
             pure $ zoomIn
               { syntax: children.value
               , past:
-                { value: Nothing
+                { value: ConflictValue
                 , otherChildren: children.otherChildren
                 , dir
                 } : past
@@ -158,7 +166,7 @@ zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
             pure $ zoomIn
               { syntax: unsafePartial (unsafeIndex children dir)
               , past:
-                { value
+                { value: InternalValue value
                 , otherChildren: spliceArr children dir 1 []
                 , dir
                 } : past
@@ -186,8 +194,8 @@ up {syntax, past, anchor, focus} = do
   -- we can add it to the selection offsets
   let children = spliceArr otherChildren dir 0 [syntax]
       newSyntax = case value of
-        Just value' -> Internal value children
-        Nothing -> case children of
+        InternalValue value' -> Internal value' children
+        ConflictValue -> case children of
           [term, expectedTy, actualTy] -> Conflict {term, expectedTy, actualTy}
           _ -> unsafeThrow "deeply broken up"
   let zipper =
@@ -216,7 +224,7 @@ down dir zipper@{syntax, past} = case syntax of
     pure
       -- XXX unsafe
       { syntax: unsafePartial (unsafeIndex children dir)
-      , past: {dir, otherChildren, value} : past
+      , past: {dir, otherChildren, value: InternalValue value} : past
       , anchor
       , focus
       }
