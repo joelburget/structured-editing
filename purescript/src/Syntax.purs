@@ -22,13 +22,6 @@ import Partial.Unsafe (unsafePartial)
 import Path (Path(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
 
 
--- "syntax unit"
-data SUnit = SUnit
-derive instance genericSUnit :: Generic SUnit
-instance showSUnit :: Show SUnit where show = gShow
-instance eqSUnit :: Eq SUnit where eq = gEq
-instance foreignSUnit :: IsForeign SUnit where read _ = pure SUnit
-
 throwE :: forall e m a. Applicative m => e -> ExceptT e m a
 throwE = ExceptT <<< pure <<< Left
 
