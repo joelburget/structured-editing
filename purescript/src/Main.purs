@@ -2,8 +2,9 @@ module Main where
 -- Goal: complete roundtrip `Syntax -> RawSelection -> Action -> (Syntax, ContentState)`
 
 import Prelude
+import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Template (LightInline, InlineInfo, LightInlineType(..), interpolateTemplate, mkTemplate, inlineSelection)
-import Util (iForM, whenJust)
+import Util
 import Data.Array (snoc, (..), (:))
 import Data.List as List
 import Data.Map as Map
@@ -22,9 +23,9 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(Just), maybe)
 import Data.Traversable (sequence)
 import Path (Path, PathStep, subPath, getOffset)
-import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, followPath, zoomIn, syntaxHoles, zipUp, makePath, getLeafTemplate, getInternalTemplate)
+import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, followPath, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Generic (myOptions)
-import Lang (LangZipper, LangSyntax, ZoomedLang, Internal, Leaf)
+import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
 
 
 type EntityRange =
@@ -92,7 +93,7 @@ blockFromContent inlines =
                , length: sLen
                , key
                }
-             , preEntityMap = Map.insert key entityType state.preEntityMap
+               , preEntityMap = Map.insert key entityType state.preEntityMap
              }
 
       accumAnchorFocus :: InlineInfo -> BFromCState -> BFromCState
@@ -131,6 +132,11 @@ contentFromSyntax :: LangSyntax
                   -> Maybe Path
                   -> Maybe Path
                   -> State Int {inlines :: Array LightInline, ids :: Map Int (Array PathStep)}
+contentFromSyntax (Conflict {term, expectedTy, actualTy}) anchor focus = do
+  {inlines, ids} <- contentFromSyntax term (subPath 0 anchor) (subPath 0 focus)
+  let inlines' = map (\li -> li { ty = InlineConflict }) inlines
+  pure {inlines: inlines', ids}
+
 contentFromSyntax syntax anchor focus = do
   let anchorOffset = getOffset anchor
       focusOffset = getOffset focus
@@ -160,25 +166,16 @@ contentFromSyntax syntax anchor focus = do
             {ty: InlineLeaf, key: myId, content, info: inlineSelection 0 (String.length content) anchorOffset focusOffset}
           ]
           ids = Map.singleton myId []
-       in pure {inlines, ids}
+      in pure {inlines, ids}
 
     Hole str ->
       let inlines = [
           {ty: InlineHole, key: myId, content: str, info: inlineSelection 0 (String.length str) anchorOffset focusOffset}
           ]
           ids = Map.singleton myId []
-     in pure {inlines, ids}
+      in pure {inlines, ids}
 
-    Conflict {term, expectedTy, actualTy} -> do
-      {inlines: termInlines, ids: termIds} <- contentFromSyntax term (subPath 0 anchor) (subPath 0 focus)
-      {inlines: expectedInlines, ids: expectedIds} <- contentFromSyntax expectedTy (subPath 1 anchor) (subPath 1 focus)
-      {inlines: actualInlines, ids: actualIds} <- contentFromSyntax actualTy (subPath 2 anchor) (subPath 2 focus)
-
-      let template = mkTemplate "conflict: {{}: expected {} vs actual {}}"
-          preInlines = interpolateTemplate template InlineConflict {key: myId, anchorOffset, focusOffset} [termInlines, expectedInlines, actualInlines]
-          inlines = maybe [] id preInlines
-          ids = Map.insert myId [] (Map.unions [termIds, expectedIds, actualIds])
-      pure {inlines, ids}
+    Conflict _ -> unsafeThrow "invariant violation: contentFromSyntax (Conflict _)"
 
 
 -- type RawSelection = { anchor :: Path, focus :: Path }
@@ -296,8 +293,10 @@ listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
 listAllHoles :: Fn1 LangZipper (Array String)
 listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
 
--- listAllConflicts :: Fn1 LangZipper (Array String)
--- listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
+listAllConflicts :: Fn1
+  LangZipper
+  (Array {conflictInfo :: LangConflictInfo, loc :: Array PathStep})
+listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxConflicts)
 
 type SelectionInfo =
   { anchorInfo :: String

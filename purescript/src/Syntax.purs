@@ -8,6 +8,7 @@ import Template
 import Util
 import Data.List as List
 import Control.Monad.State (State, StateT, modify, get, put, evalState, evalStateT, runState)
+import Data.Array as Array
 import Data.Array.Partial (unsafeIndex)
 import Data.Bifunctor (lmap, rmap)
 import Data.Either (Either(..))
@@ -15,7 +16,7 @@ import Data.Foreign (ForeignError(JSONError), readString)
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Foreign.Generic (Options, SumEncoding(..), defaultOptions, readGeneric)
 import Data.Generic (class Generic, gShow, gEq)
-import Data.List (List, (:), uncons)
+import Data.List (List, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (length)
 import Partial.Unsafe (unsafePartial)
@@ -49,12 +50,20 @@ class Lang internal leaf where
 
   infer :: Syntax internal leaf -> Syntax internal leaf
 
+type ConflictInfo internal leaf =
+  { term :: Syntax internal leaf
+  , expectedTy :: Syntax internal leaf
+  , actualTy :: Syntax internal leaf
+  }
+
 data Syntax internal leaf
   -- We allow `Nothing` here *only* in the case we're looking inside a conflict
   = Internal internal (Array (Syntax internal leaf))
   | Leaf leaf
   | Hole String
   | Conflict
+    -- weirdly this has to be inlined for generic deriving even though it's
+    -- really just ConflictInfo
     { term :: Syntax internal leaf
     , expectedTy :: Syntax internal leaf
     , actualTy :: Syntax internal leaf
@@ -84,6 +93,17 @@ syntaxHoles (Internal _ children) = children >>= syntaxHoles
 syntaxHoles (Leaf _) = []
 syntaxHoles (Hole name) = [name]
 syntaxHoles (Conflict {term}) = syntaxHoles term
+
+syntaxConflicts
+  :: forall a b. Syntax a b
+  -> Array {conflictInfo :: ConflictInfo a b, loc :: Array PathStep}
+syntaxConflicts (Internal _ children) =
+  let conflicts = children >>= syntaxConflicts
+  in mapWithIndex (\i {conflictInfo, loc} -> {conflictInfo, loc: i Array.: loc})
+                  conflicts
+syntaxConflicts (Leaf _) = []
+syntaxConflicts (Hole _) = []
+syntaxConflicts (Conflict conflictInfo) = [{conflictInfo, loc: []}]
 
 type SyntaxZipper a b =
   { syntax :: Syntax a b
@@ -301,30 +321,5 @@ consumePath i@(Internal _ children) = do
 
   pure unit
 
--- conflict: {[term]: expected [left] vs actual [right]}
-consumePath (Conflict {term, expectedTy, actualTy}) =
-  -- TODO so much duplication from above here
-  -- might make sense for Conflict to be an Internal node.
-  let checkAndModify str = do
-        (ConsumedInPreviousChunks prev) <- get
-        let len = length str
-        offset <- lift $ lift $ get
-        if offset < len
-          then lift $ throwR (PathOffset (prev + offset))
-          else do lift $ lift $ modify (_ - len)
-                  put $ ConsumedInPreviousChunks (prev + len)
-
-      yieldsPiece :: StateT ConsumedInPreviousChunks
-                     (ExceptT (Either String Path)
-                     (State Int))
-                     Unit
-      yieldsPiece = do
-        checkAndModify "conflict: {"
-        lift $ withExceptT (rmap (PathCons 0)) (consumePath term)
-        checkAndModify ": expected "
-        lift $ withExceptT (rmap (PathCons 1)) (consumePath expectedTy)
-        checkAndModify " vs actual "
-        lift $ withExceptT (rmap (PathCons 2)) (consumePath actualTy)
-        checkAndModify "}"
-
-  in evalStateT yieldsPiece (ConsumedInPreviousChunks 0)
+consumePath (Conflict {term}) =
+  withExceptT (rmap (PathCons 0)) (consumePath term)

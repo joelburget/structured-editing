@@ -1,8 +1,9 @@
-module Util (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM, forM_, traceShowId, traceAnyId, traceLabelShowId, traceLabelAnyId) where
+module Util (isDigit, spliceStr, spliceArr, whenJust, iFor, iForM, forM, forM_, mapWithIndex, traceShowId, traceAnyId, traceLabelShowId, traceLabelAnyId) where
 
 import Prelude
 import Control.Monad.State (modify, get, evalState, evalStateT)
 import Control.Monad.Trans (lift)
+import Data.Array (zipWith, range, length)
 import Data.Maybe (Maybe(..))
 import Data.Traversable
 
@@ -38,6 +39,11 @@ forM = flip traverse
 
 forM_ :: forall a b m t. (Traversable t, Applicative m) => t a -> (a -> m b) -> m Unit
 forM_ x f = forM x f *> pure unit
+
+-- TODO remove when this is added to Data.Array
+mapWithIndex :: forall a b. (Int -> a -> b) -> Array a -> Array b
+mapWithIndex f xs =
+  zipWith f (range 0 (length xs - 1)) xs
 
 traceShowId :: forall a. Show a => a -> a
 traceShowId a = traceShow a \_ -> a

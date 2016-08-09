@@ -92,6 +92,8 @@ recognizeInternalKeyword name past anchor =
 operate :: LangZipper -> Action -> Either String LangZipper
 operate zipper@{syntax, anchor, focus} action = if anchor == focus
   then operateAtomic zipper action
+  -- TODO this does *not* work if the selected term is, eg,
+  -- `if 1 then _ else _`, because the focus goes further in :(
   else case Tuple anchor focus of
          -- kind of a hack to see if consuming `finish + 1` chars takes you
          -- beyond this syntax
@@ -100,9 +102,9 @@ operate zipper@{syntax, anchor, focus} action = if anchor == focus
              -- left indicates failure to consume that many characters -- good!
              Left _ -> operateWithEntireNodeSelected zipper action
              -- right indicates success -- bad!
-             Right _ -> Left "spanning actions not yet implemented"
+             Right _ -> Left "spanning actions not yet implemented (1)"
 
-         _ -> Left "spanning actions not yet implemented"
+         _ -> Left "spanning actions not yet implemented (2)"
 
 -- throwUserMessage :: forall a. String -> Operate a
 throwUserMessage :: String -> Either String LangZipper

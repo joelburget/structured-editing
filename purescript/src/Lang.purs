@@ -22,6 +22,7 @@ type LangSyntax = Syntax Internal Leaf
 type LangZipper = SyntaxZipper Internal Leaf
 type ZoomedLang = ZoomedSZ Internal Leaf
 type LangPast = Past Internal Leaf
+type LangConflictInfo = ConflictInfo Internal Leaf
 
 data Internal
   = IfThenElse

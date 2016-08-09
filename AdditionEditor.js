@@ -21,6 +21,7 @@ import type {
 import {
   selectionInfo,
   listAllHoles,
+  listAllConflicts,
   operate,
   genContentState,
   initSelectSyntax,
@@ -209,28 +210,47 @@ export class AdditionEditor extends React.Component {
     const holes = listAllHoles(this.props.opaqueSyntax)
       .map(name => <li>{name}</li>);
 
+    // TODO render this!
+    const conflicts = listAllConflicts(this.props.opaqueSyntax)
+      .map(({conflictInfo, loc}) => (
+        <li>
+          <ul>
+            <li>expected: {JSON.stringify(conflictInfo.expectedTy)}</li>
+            <li>actual: {JSON.stringify(conflictInfo.actualTy)}</li>
+          </ul>
+        </li>
+      ));
+
     const {anchorInfo, focusInfo, evaluated} =
       selectionInfo(this.props.opaqueSyntax);
 
     return (
       <div style={styles.root}>
         <h3>editor</h3>
-        <Editor
-          ref={elem => this.editor = elem}
-          editorState={editorState}
-          handleKeyCommand={this.handleKeyCommand}
-          handleBeforeInput={this.handleBeforeInput}
-          keyBindingFn={additionKeyBindingFn}
-          onChange={this.handleRawChange}
-        />
-        <h3>info</h3>
-        <p>{anchorInfo}</p>
-        <p>{focusInfo}</p>
-        <p>{evaluated}</p>
-        <h3>holes</h3>
-        <ul>
-          {holes}
-        </ul>
+        <div style={styles.editor}>
+          <Editor
+            ref={elem => this.editor = elem}
+            editorState={editorState}
+            handleKeyCommand={this.handleKeyCommand}
+            handleBeforeInput={this.handleBeforeInput}
+            keyBindingFn={additionKeyBindingFn}
+            onChange={this.handleRawChange}
+          />
+        </div>
+        <div style={styles.info}>
+          <h3>info</h3>
+          <p>{anchorInfo}</p>
+          <p>{focusInfo}</p>
+          <p>{evaluated}</p>
+          <h3>conflicts</h3>
+          <ul>
+            {conflicts}
+          </ul>
+          <h3>holes</h3>
+          <ul>
+            {holes}
+          </ul>
+        </div>
       </div>
     );
   }
@@ -337,5 +357,12 @@ const styles = {
   },
   conflict: {
     backgroundColor: 'rgba(255, 0, 0, 0.09)',
+  },
+  info: {
+  },
+  editor: {
+    paddingBottom: 10,
+    borderBottom: '1px solid gray',
+    overflow: 'hidden',
   },
 };
