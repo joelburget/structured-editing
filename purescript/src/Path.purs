@@ -16,6 +16,12 @@ derive instance genericPath :: Generic Path
 instance showPath :: Show Path where show = gShow
 instance eqPath :: Eq Path where eq = gEq
 
+pathsDifferOnlyInOffset :: Path -> Path -> Maybe {off1 :: Int, off2 :: Int}
+pathsDifferOnlyInOffset (PathCons d1 rest1) (PathCons d2 rest2) =
+  if d1 == d2 then pathsDifferOnlyInOffset rest1 rest2 else Nothing
+pathsDifferOnlyInOffset (PathOffset off1) (PathOffset off2) = Just {off1, off2}
+pathsDifferOnlyInOffset _ _ = Nothing
+
 getOffset :: Maybe Path -> Maybe Int
 getOffset path = case path of
   Just (PathOffset n) -> Just n

@@ -16,8 +16,8 @@ import Data.Map as Map
 import Data.Map (Map, member)
 import Data.Tuple (Tuple(..))
 
-import Path (Path(..), (.+), PathStep)
-import Syntax (SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, updateChildType, constrainType, zoomIn, ZoomedSZ(..))
+import Path (Path(..), (.+), PathStep, pathsDifferOnlyInOffset)
+import Syntax (SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, updateChildType, constrainType, zoomIn, ZoomedSZ(..), makePath)
 import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
@@ -90,9 +90,19 @@ recognizeInternalKeyword name past anchor =
 
 -- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
-operate zipper@{anchor, focus} action = if anchor == focus
+operate zipper@{syntax, anchor, focus} action = if anchor == focus
   then operateAtomic zipper action
-  else Left "spanning actions not yet implemented"
+  else case Tuple anchor focus of
+         -- kind of a hack to see if consuming `finish + 1` chars takes you
+         -- beyond this syntax
+         Tuple (PathOffset 0) (PathOffset finish) ->
+           case makePath syntax (finish + 1) of
+             -- left indicates failure to consume that many characters -- good!
+             Left _ -> operateWithEntireNodeSelected zipper action
+             -- right indicates success -- bad!
+             Right _ -> Left "spanning actions not yet implemented"
+
+         _ -> Left "spanning actions not yet implemented"
 
 -- throwUserMessage :: forall a. String -> Operate a
 throwUserMessage :: String -> Either String LangZipper
@@ -127,6 +137,19 @@ propose syntax z =
          syntax' -> propose syntax' z'
        -- reached the top, fill it in
        Nothing -> z {syntax = syntax}
+
+operateWithEntireNodeSelected :: LangZipper -> Action -> Either String LangZipper
+operateWithEntireNodeSelected zipper action =
+  -- TODO this is a complete hack. backspacing will remove this character.
+  let str = case action of
+              Backspace -> "x"
+              _ -> ""
+      newZipper = { syntax: Hole str
+                  , past: zipper.past
+                  , anchor: PathOffset (length str)
+                  , focus: PathOffset (length str)
+                  }
+  in operateAtomic newZipper action
 
 -- filling a hole is easy
 operateAtomic :: LangZipper -> Action -> Either String LangZipper

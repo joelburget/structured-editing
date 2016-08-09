@@ -246,7 +246,7 @@ makePath syntax n =
   in case y of
        Tuple (Left x) _ -> x
        Tuple (Right _) c -> Left $ "makePath overflow: " <>
-         show n <> " demanded, " <> show c <> " consumed"
+         show n <> " demanded, " <> show c <> " remaining"
 
 newtype ConsumedInPreviousChunks = ConsumedInPreviousChunks Int
 
