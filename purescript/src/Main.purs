@@ -20,7 +20,7 @@ import Data.Foreign.Generic (readGeneric)
 import Data.Function.Uncurried (mkFn2, Fn2, mkFn1, Fn1)
 import Data.Generic (class Generic)
 import Data.Map (Map)
-import Data.Maybe (Maybe(Just), maybe)
+import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
 import Path (Path, PathStep, subPath, getOffset)
 import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, followPath, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
@@ -265,6 +265,13 @@ genContentState = mkFn1 \zipper ->
       contentState = blockFromContent (contentAndKeymapping.inlines)
   in toForeign contentState
 
+genDisplayContentState :: Fn1 LangSyntax Foreign
+genDisplayContentState = mkFn1 \syntax ->
+  let yieldsContent = contentFromSyntax syntax Nothing Nothing
+      contentAndKeymapping = evalState yieldsContent 0
+      contentState = blockFromContent (contentAndKeymapping.inlines)
+  in toForeign contentState
+
 operate :: Fn2 LangZipper Foreign (Either String LangZipper)
 operate = mkFn2 \zipper foreignAction -> do
   action <- lmap show (read foreignAction)
@@ -287,10 +294,10 @@ setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   let zipper' = top {anchor = anchor, focus = focus}
   pure (zoomIn zipper')
 
-listLocalHoles :: Fn1 LangZipper (Array String)
+listLocalHoles :: Fn1 LangZipper (Array LangSyntax)
 listLocalHoles = mkFn1 (_.syntax >>> syntaxHoles)
 
-listAllHoles :: Fn1 LangZipper (Array String)
+listAllHoles :: Fn1 LangZipper (Array LangSyntax)
 listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
 
 listAllConflicts :: Fn1
@@ -299,22 +306,22 @@ listAllConflicts :: Fn1
 listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxConflicts)
 
 type SelectionInfo =
-  { anchorInfo :: String
-  , focusInfo :: String
-  , evaluated :: String
+  { anchorInfo :: LangSyntax
+  , focusInfo :: LangSyntax
+  , evaluated :: LangSyntax
   }
 
 selectionInfo :: Fn1 LangZipper SelectionInfo
 selectionInfo = mkFn1 \z ->
   if z.anchor == z.focus
-  then let anchorInfo = show (followPath z.syntax z.anchor)
+  then let anchorInfo = followPath z.syntax z.anchor
        in { anchorInfo
           , focusInfo: anchorInfo
-          , evaluated: show $ normalize z.syntax
+          , evaluated: normalize z.syntax
           }
   else case zoomIn z of
          ZoomedSZ zz ->
-           { anchorInfo: show (followPath z.syntax z.anchor)
-           , focusInfo: show (followPath z.syntax z.focus)
-           , evaluated: show $ normalize z.syntax
+           { anchorInfo: followPath z.syntax z.anchor
+           , focusInfo: followPath z.syntax z.focus
+           , evaluated: normalize z.syntax
            }

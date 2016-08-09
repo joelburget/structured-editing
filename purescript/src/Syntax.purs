@@ -88,10 +88,10 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
         pure (Conflict {term, expectedTy, actualTy})
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
-syntaxHoles :: forall a b. Syntax a b -> Array String
+syntaxHoles :: forall a b. Syntax a b -> Array (Syntax a b)
 syntaxHoles (Internal _ children) = children >>= syntaxHoles
 syntaxHoles (Leaf _) = []
-syntaxHoles (Hole name) = [name]
+syntaxHoles h@(Hole _) = [h]
 syntaxHoles (Conflict {term}) = syntaxHoles term
 
 syntaxConflicts

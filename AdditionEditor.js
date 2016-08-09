@@ -24,6 +24,7 @@ import {
   listAllConflicts,
   operate,
   genContentState,
+  genDisplayContentState,
   initSelectSyntax,
   setEndpoints,
 } from './purescript/output/Main/index.js';
@@ -205,18 +206,26 @@ export class AdditionEditor extends React.Component {
       anchorKey, anchorOffset,
       isBackward: focusOffset < anchorOffset,
     });
+
+    // TODO we don't *always* want this selection to be force. sometimes you
+    // want to click elsewhere. only if the editor has focus.
     editorState = EditorState.forceSelection(editorState, selectionState);
 
     const holes = listAllHoles(this.props.opaqueSyntax)
-      .map(name => <li>{name}</li>);
+      .map(hole => <li><AdditionDisplay opaqueSyntax={hole} /></li>);
 
-    // TODO render this!
     const conflicts = listAllConflicts(this.props.opaqueSyntax)
       .map(({conflictInfo, loc}) => (
         <li>
-          <ul>
-            <li>expected: {JSON.stringify(conflictInfo.expectedTy)}</li>
-            <li>actual: {JSON.stringify(conflictInfo.actualTy)}</li>
+          <ul style={styles.conflictList}>
+            <li style={styles.conflictItem}>
+              <div>expected:</div>
+              <div><AdditionDisplay opaqueSyntax={conflictInfo.expectedTy} /></div>
+            </li>
+            <li style={styles.conflictItem}>
+              <div>actual:</div>
+              <div><AdditionDisplay opaqueSyntax={conflictInfo.actualTy} /></div>
+            </li>
           </ul>
         </li>
       ));
@@ -239,21 +248,42 @@ export class AdditionEditor extends React.Component {
         </div>
         <div style={styles.info}>
           <h3>info</h3>
-          <p>{anchorInfo}</p>
-          <p>{focusInfo}</p>
-          <p>{evaluated}</p>
+          <p>anchor: <AdditionDisplay opaqueSyntax={anchorInfo} /></p>
+          <p>focus: <AdditionDisplay opaqueSyntax={focusInfo} /></p>
+          <p>evaluated: <AdditionDisplay opaqueSyntax={evaluated} /></p>
           <h3>conflicts</h3>
-          <ul>
+          <ul style={styles.conflictList}>
             {conflicts}
           </ul>
           <h3>holes</h3>
-          <ul>
+          <ul style={styles.conflictList}>
             {holes}
           </ul>
         </div>
       </div>
     );
   }
+}
+
+function AdditionDisplay({opaqueSyntax}) {
+  const {
+    block,
+    preEntityMap,
+  } = genDisplayContentState(opaqueSyntax);
+
+  const entityMap = {};
+  preEntityMap.value0.forEach((val, ix) => {
+    entityMap[ix] = entityTypes[val];
+  });
+  const contentState = convertFromRaw({
+    blocks: [Object.assign({}, block, {type: 'unstyled'})],
+    entityMap,
+  });
+  let editorState = EditorState.createWithContent(
+    contentState, DataDecorator
+  );
+
+  return <Editor editorState={editorState} />;
 }
 
 function handleEither(either, left, right) {
@@ -364,5 +394,12 @@ const styles = {
     paddingBottom: 10,
     borderBottom: '1px solid gray',
     overflow: 'hidden',
+  },
+  conflictItem: {
+    display: 'flex',
+  },
+  conflictList: {
+    listStyleType: 'none',
+    WebkitPaddingStart: 0,
   },
 };
