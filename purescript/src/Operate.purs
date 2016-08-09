@@ -118,25 +118,29 @@ propose :: LangSyntax -> LangZipper -> LangZipper
 propose syntax z =
   let inferredTy = infer syntax
       oldTy = infer z.syntax
+
+      zoomIn' :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
+      zoomIn' z = case zoomIn z of ZoomedSZ z' -> z'
+
   -- as long as the type changes, keep marching up.
   -- TODO I'm not sure this check is even necessary
   in if oldTy == inferredTy
-     then z {syntax = syntax}
+     -- make sure to zoom in once we've finished resolving changes
+     -- TODO maybe this should be factored out?
+     then zoomIn' $ z {syntax = syntax}
      -- okay, we have differing types:
      -- * try to push this type up the tree with `updateChildType`
      else case up z of
        Just {zipper: z', prevLoc} -> case updateChildType z'.syntax {ix: prevLoc, newTm: syntax, newTy: inferredTy} of
-         c@(Conflict _) ->
-           let result = zoomIn $
-                 z' { syntax = c
-                    -- point to the term
-                    , anchor = PathCons 0 (PathOffset 0)
-                    , focus = PathCons 0 (PathOffset 0)
-                    }
-           in case result of ZoomedSZ result' -> result'
+         c@(Conflict _) -> zoomIn' $
+           z' { syntax = c
+              -- point to the term
+              , anchor = PathCons 0 (PathOffset 0)
+              , focus = PathCons 0 (PathOffset 0)
+              }
          syntax' -> propose syntax' z'
        -- reached the top, fill it in
-       Nothing -> z {syntax = syntax}
+       Nothing -> zoomIn' $ z {syntax = syntax}
 
 operateWithEntireNodeSelected :: LangZipper -> Action -> Either String LangZipper
 operateWithEntireNodeSelected zipper action =
