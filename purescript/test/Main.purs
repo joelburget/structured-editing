@@ -7,6 +7,7 @@ import Operate
 import Path
 import Syntax
 import Lang
+import Data.Generic (class Generic, gShow, gEq)
 import Data.List as List
 import Test.Unit.Assert as Assert
 import Control.Monad.Eff (Eff)
@@ -39,8 +40,8 @@ instance eqZipperEq :: (Eq a, Generic a, Generic b) => Eq (ZipperEq a b) where
     && pastEq z1.past z2.past
     && z1.anchor == z2.anchor
     && z1.focus == z2.focus
-instance showZipperEq :: Show (ZipperEq a b) where
-  show _ = "ZipperEq TODO"
+instance showZipperEq :: (Generic a, Generic b) => Show (ZipperEq a b) where
+  show (ZipperEq {syntax, past, anchor, focus}) = "{ " <> show syntax <> ", " <> showPast past <> ", " <> show anchor <> ", " <> show focus <> " }"
 
 pastEq :: forall a b. (Eq a, Generic a, Generic b) => Past a b -> Past a b -> Boolean
 pastEq past1 past2 = case Tuple (List.uncons past1) (List.uncons past2) of
@@ -51,6 +52,10 @@ pastEq past1 past2 = case Tuple (List.uncons past1) (List.uncons past2) of
     pastEq t1 t2
   Tuple Nothing Nothing -> true
   _ -> false
+showPast :: forall a b. (Generic a, Generic b) => Past a b -> String
+showPast past = case List.uncons past of
+  Just {head, tail} -> "({" <> show head.value <> ", " <> show head.otherChildren <> ", " <> show head.dir <> "}:" <> showPast tail <> ")"
+  Nothing -> "[]"
 
 assertZEq :: forall a b e. (Eq a, Generic a, Generic b)
           => SyntaxZipper a b
@@ -61,38 +66,37 @@ assertZEq expected found = Assert.equal
   (ZipperEq `rmap` found)
 
 traversalsSuite = suite "traversals" do
-  test "|(1 + 1)" do
-    Assert.equal (Right (PathOffset 0)) (makePath onePlusOne 0)
+  test "|1 + 1" do
+    Assert.equal (Right (PathCons 0 (PathOffset 0))) (makePath onePlusOne 0)
 
   -- touching a number on either side counts as part of the number
-  test "(|1 + 1)" do
-    Assert.equal (Right (PathCons 0 (PathOffset 0))) (makePath onePlusOne 1)
-  test "(1| + 1)" do
-    Assert.equal (Right (PathCons 0 (PathOffset 1))) (makePath onePlusOne 2)
+  test "|1 + 1" do
+    Assert.equal (Right (PathCons 0 (PathOffset 0))) (makePath onePlusOne 0)
+  test "1| + 1" do
+    Assert.equal (Right (PathCons 0 (PathOffset 1))) (makePath onePlusOne 1)
 
-  test "(1 |+ 1)" do
+  test "1 |+ 1" do
+    Assert.equal (Right (PathOffset 1)) (makePath onePlusOne 2)
+  test "1 +| 1" do
     Assert.equal (Right (PathOffset 2)) (makePath onePlusOne 3)
-  test "(1 +| 1)" do
-    Assert.equal (Right (PathOffset 3)) (makePath onePlusOne 4)
 
-  test "(1 + |1)" do
-    Assert.equal (Right (PathCons 1 (PathOffset 0))) (makePath onePlusOne 5)
-  test "(1 + 1|)" do
-    Assert.equal (Right (PathCons 1 (PathOffset 1))) (makePath onePlusOne 6)
-  test "(1 + 1)|" do
-    Assert.equal (Right (PathOffset 5)) (makePath onePlusOne 7)
+  -- on the border always go in as far as possible
+  test "1 + |1" do
+    Assert.equal (Right (PathCons 1 (PathOffset 0))) (makePath onePlusOne 4)
+  test "1 + 1|" do
+    Assert.equal (Right (PathCons 1 (PathOffset 1))) (makePath onePlusOne 5)
+  -- test "(1 + 1)|" do
+  --   Assert.equal (Right (PathOffset 5)) (makePath onePlusOne 7)
 
-  test "(1 + |_)" do
-    Assert.equal (Right (PathCons 1 (PathOffset 0))) (makePath onePlusOne 5)
-  test "(1 + _|)" do
-    Assert.equal (Right (PathCons 1 (PathOffset 1))) (makePath onePlusOne 6)
+  test "1 + |_" do
+    Assert.equal (Right (PathCons 1 (PathOffset 0))) (makePath onePlusOne 4)
+  test "1 + _|" do
+    Assert.equal (Right (PathCons 1 (PathOffset 1))) (makePath onePlusOne 5)
 
-  test "(1 + |(2 + 3))" do
-    Assert.equal (Right (PathOffset 4)) (makePath oneTwoThree 5)
-  test "(1 + (|2 + 3))" do
-    Assert.equal (Right (PathCons 1 (PathCons 0 (PathOffset 0)))) (makePath oneTwoThree 6)
-  test "(1 + (2 + 3)|)" do
-    Assert.equal (Right (PathOffset 4)) (makePath oneTwoThree 12)
+  test "1 + 2 + |3" do
+    Assert.equal (Right (PathCons 1 (PathCons 1 (PathOffset 0)))) (makePath oneTwoThree 8)
+  test "1 + 2 + 3|" do
+    Assert.equal (Right (PathCons 1 (PathCons 1 (PathOffset 1)))) (makePath oneTwoThree 9)
 
 operationsSuite = suite "operations" do
   test "inserting at front" do
@@ -113,47 +117,57 @@ operationsSuite = suite "operations" do
       (operateAtomic (makeZipper (Hole "a")) (Typing 'b'))
 
   test "inserting in middle" do
+    let z = makeZipper (Leaf (IntLeaf 124))
+        z' = z { anchor = PathOffset 2, focus = PathOffset 2 }
     assertZEq
       { syntax: Leaf (IntLeaf 1234)
       , anchor: PathOffset 3
       , focus: PathOffset 3
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf (IntLeaf 124))) (Typing '3'))
+      (operateAtomic z' (Typing '3'))
 
+    let z = makeZipper (Hole "acd")
+        z' = z { anchor = PathOffset 1, focus = PathOffset 1 }
     assertZEq
       { syntax: Hole "abcd"
       , anchor: PathOffset 2
       , focus: PathOffset 2
       , past: Nil
       }
-      (operateAtomic (makeZipper (Hole "acd")) (Typing 'b'))
+      (operateAtomic z' (Typing 'b'))
 
   test "backspacing in middle" do
+    let z = makeZipper (Hole "abcd")
+        z' = z { anchor = PathOffset 2, focus = PathOffset 2 }
     assertZEq
       { syntax: Hole "acd"
       , anchor: PathOffset 1
       , focus: PathOffset 1
       , past: Nil
       }
-      (operateAtomic (makeZipper (Hole "abcd")) Backspace)
+      (operateAtomic z' Backspace)
 
+    let z = makeZipper (Leaf (IntLeaf 1234))
+        z' = z { anchor = PathOffset 2, focus = PathOffset 2 }
     assertZEq
       { syntax: Leaf (IntLeaf 134)
       , anchor: PathOffset 1
       , focus: PathOffset 1
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf (IntLeaf 1234))) Backspace)
+      (operateAtomic z' Backspace)
 
   test "backspacing negative number" do
+    let z = makeZipper (Leaf (IntLeaf (-1)))
+        z' = z { anchor = PathOffset 1, focus = PathOffset 1 }
     assertZEq
       { syntax: Leaf (IntLeaf 1)
       , anchor: PathOffset 0
       , focus: PathOffset 0
       , past: Nil
       }
-      (operateAtomic (makeZipper (Leaf (IntLeaf (-1)))) Backspace)
+      (operateAtomic z' Backspace)
 
 
 main :: forall e. Eff (console :: CONSOLE, testOutput :: TESTOUTPUT | e) Unit

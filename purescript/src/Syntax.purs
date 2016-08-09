@@ -290,7 +290,7 @@ consumePath i@(Internal _ children) = do
           let len = length str
           (ConsumedInPreviousChunks prev) <- get
           offset <- lift $ lift $ get
-          if offset <= len
+          if offset < len
             then lift $ throwR (PathOffset (prev + offset))
             else do lift $ lift $ modify (_ - len)
                     put $ ConsumedInPreviousChunks (prev + len)
@@ -309,7 +309,7 @@ consumePath (Conflict {term, expectedTy, actualTy}) =
         (ConsumedInPreviousChunks prev) <- get
         let len = length str
         offset <- lift $ lift $ get
-        if offset <= len
+        if offset < len
           then lift $ throwR (PathOffset (prev + offset))
           else do lift $ lift $ modify (_ - len)
                   put $ ConsumedInPreviousChunks (prev + len)
