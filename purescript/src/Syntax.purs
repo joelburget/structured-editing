@@ -56,6 +56,9 @@ type ConflictInfo internal leaf =
   , actualTy :: Syntax internal leaf
   }
 
+-- TODO decide whether some of these cases should be merged. Fundamentally this
+-- is a labelled rose tree and we don't necessarily need to distinguish between
+-- the cases. Also could be `CoFree`.
 data Syntax internal leaf
   -- We allow `Nothing` here *only* in the case we're looking inside a conflict
   = Internal internal (Array (Syntax internal leaf))
