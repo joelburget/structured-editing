@@ -16,6 +16,12 @@ derive instance genericPath :: Generic Path
 instance showPath :: Show Path where show = gShow
 instance eqPath :: Eq Path where eq = gEq
 
+-- TODO can't actually compare without knowing what language nodes these flow
+-- through
+-- instance ordPath :: Ord Path where
+--   compare (PathOffset x) (PathOffset y) = compare x y
+--   compare (PathCons
+
 pathsDifferOnlyInOffset :: Path -> Path -> Maybe {off1 :: Int, off2 :: Int}
 pathsDifferOnlyInOffset (PathCons d1 rest1) (PathCons d2 rest2) =
   if d1 == d2 then pathsDifferOnlyInOffset rest1 rest2 else Nothing

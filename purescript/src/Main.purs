@@ -26,6 +26,7 @@ import Path (Path, PathStep, subPath, getOffset)
 import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, followPath, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Generic (myOptions)
 import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
+import Operate (suggestCoherentSelection, SelectionSuggestions(..))
 
 
 type EntityRange =
@@ -305,23 +306,26 @@ listAllConflicts :: Fn1
   (Array {conflictInfo :: LangConflictInfo, loc :: Array PathStep})
 listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxConflicts)
 
+listLocalConflicts :: Fn1
+  LangZipper
+  (Array {conflictInfo :: LangConflictInfo, loc :: Array PathStep})
+listLocalConflicts = mkFn1 (_.syntax >>> syntaxConflicts)
+
+suggestionsToForeign :: SelectionSuggestions -> Foreign
+suggestionsToForeign MoveStart = toForeign "move-start"
+suggestionsToForeign MoveFinish = toForeign "move-finish"
+suggestionsToForeign MoveBoth = toForeign "move-both"
+suggestionsToForeign NoSuggestion = toForeign "no-suggestion"
+
 type SelectionInfo =
-  { anchorInfo :: LangSyntax
-  , focusInfo :: LangSyntax
+  { selectionSuggestions :: Foreign
   , evaluated :: LangSyntax
   }
 
 selectionInfo :: Fn1 LangZipper SelectionInfo
 selectionInfo = mkFn1 \z ->
-  if z.anchor == z.focus
-  then let anchorInfo = followPath z.syntax z.anchor
-       in { anchorInfo
-          , focusInfo: anchorInfo
-          , evaluated: normalize z.syntax
-          }
-  else case zoomIn z of
-         ZoomedSZ zz ->
-           { anchorInfo: followPath z.syntax z.anchor
-           , focusInfo: followPath z.syntax z.focus
-           , evaluated: normalize z.syntax
-           }
+  case zoomIn z of
+    ZoomedSZ zz ->
+      { selectionSuggestions: suggestionsToForeign (suggestCoherentSelection z)
+      , evaluated: normalize z.syntax
+      }

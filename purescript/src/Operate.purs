@@ -108,6 +108,31 @@ focusIsAllRight (PathCons dir rest) (Internal _ children) =
      else false
 focusIsAllRight _ _ = false
 
+data SelectionSuggestions
+  = MoveStart
+  | MoveFinish
+  | MoveBoth
+  | NoSuggestion
+
+-- | Suggest moving the current selection if it doesn't match one of the two
+-- | cases:
+-- | * it's entirely within a leaf
+-- | * it perfectly wraps a node
+-- |
+-- | In other words, the selection must begin and end on the same level.
+suggestCoherentSelection :: LangZipper -> SelectionSuggestions
+suggestCoherentSelection zipper =
+  let zipper' = zoomIn' zipper
+      anchor = zipper'.anchor
+      focus = zipper'.focus
+  in if anchorIsAllLeft anchor && focusIsAllRight focus zipper'.syntax
+     then NoSuggestion
+     else case Tuple anchor focus of
+            Tuple (PathOffset _) (PathOffset _) -> NoSuggestion
+            Tuple (PathOffset _) (PathCons _ _) -> MoveStart
+            Tuple (PathCons _ _) (PathOffset _) -> MoveFinish
+            Tuple (PathCons _ _) (PathCons _ _) -> MoveBoth
+
 -- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
 operate zipper@{syntax, anchor, focus} action = if anchor == focus
@@ -118,10 +143,14 @@ operate zipper@{syntax, anchor, focus} action = if anchor == focus
   --   (ie it must have offset 0)
   -- * the finish "..." right
   else let zipper' = zoomIn' zipper
-       in if anchorIsAllLeft zipper'.anchor &&
-             focusIsAllRight zipper'.focus zipper'.syntax
+           anchor = zipper'.anchor
+           focus = zipper'.focus
+       in if anchorIsAllLeft anchor && focusIsAllRight focus zipper'.syntax
           then operateWithEntireNodeSelected zipper action
-          else Left "spanning actions not yet implemented (1)"
+          else case Tuple anchor focus of
+                 Tuple (PathOffset aOff) (PathOffset fOff) ->
+                   operateOffsetsInNode zipper action (min aOff fOff) (max aOff fOff)
+                 _ -> Left "spanning actions not yet implemented (1)"
 
 -- | Kind of cheating -- zoom and unwrap
 zoomIn' :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
@@ -161,6 +190,24 @@ propose syntax z =
          syntax' -> propose syntax' z'
        -- reached the top, fill it in
        Nothing -> zoomIn' $ z {syntax = syntax}
+
+operateOffsetsInNode :: LangZipper -> Action -> Int -> Int -> Either String LangZipper
+operateOffsetsInNode zipper action start end = case Tuple zipper.syntax action of
+  Tuple (Hole str) Backspace -> Right
+    { syntax: Hole (spliceStr str start (end - start) "")
+    , past: zipper.past
+    , anchor: PathOffset start
+    , focus: PathOffset start
+    }
+  Tuple (Hole str) (Typing char) -> Right
+    { syntax: Hole (spliceStr str start (end - start) (String.singleton char))
+    , past: zipper.past
+    , anchor: PathOffset (start + 1)
+    , focus: PathOffset (start + 1)
+    }
+  -- TODO other node types
+  -- Tuple (Leaf (IntLeaf n)) Backspace ->
+  _ -> Right zipper
 
 operateWithEntireNodeSelected :: LangZipper -> Action -> Either String LangZipper
 operateWithEntireNodeSelected zipper action =

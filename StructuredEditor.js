@@ -206,8 +206,12 @@ export class StructuredEditor extends React.Component {
         </li>
       ));
 
-    const {anchorInfo, focusInfo, evaluated} =
+    const {evaluated, selectionSuggestions} =
       selectionInfo(this.props.opaqueSyntax);
+
+    const suggestion = selectionSuggestions === 'no-suggestion'
+      ? null
+      : <p>suggestion: {selectionSuggestions}</p>;
 
     return (
       <div style={styles.root}>
@@ -224,8 +228,7 @@ export class StructuredEditor extends React.Component {
         </div>
         <div style={styles.info}>
           <h3>info</h3>
-          <div>anchor: <AdditionDisplay opaqueSyntax={anchorInfo} /></div>
-          <div>focus: <AdditionDisplay opaqueSyntax={focusInfo} /></div>
+          {suggestion}
           <div>evaluated: <AdditionDisplay opaqueSyntax={evaluated} /></div>
           <h3>conflicts</h3>
           <ul style={styles.conflictList}>

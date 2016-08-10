@@ -110,6 +110,8 @@ syntaxConflicts (Conflict conflictInfo) = [{conflictInfo, loc: []}]
 
 type SyntaxZipper a b =
   { syntax :: Syntax a b
+  -- TODO past becomes a bad name as we (maybe) generalize this zipper to undo
+  -- / redo as well.
   , past :: Past a b
   , anchor :: Path
   , focus :: Path
