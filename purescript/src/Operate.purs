@@ -3,10 +3,12 @@ module Operate where
 import Prelude
 
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
-import Data.Either (Either(..))
+import Data.Either (Either(..), isLeft)
 import Data.Foreign (ForeignError(JSONError))
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Generic (class Generic, gShow, gEq)
+import Data.Array as Array
+import Data.Array.Partial (unsafeIndex)
 import Data.Int as I
 import Data.List ((:))
 import Data.Maybe (Maybe(Just, Nothing))
@@ -15,9 +17,10 @@ import Data.String as String
 import Data.Map as Map
 import Data.Map (Map, member)
 import Data.Tuple (Tuple(..))
+import Partial.Unsafe (unsafePartial)
 
-import Path (Path(..), (.+), PathStep, pathsDifferOnlyInOffset)
-import Syntax (SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, updateChildType, constrainType, zoomIn, ZoomedSZ(..), makePath)
+import Path (Path(..), (.+), PathStep)
+import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, updateChildType, constrainType, zoomIn, ZoomedSZ(..), makePath)
 import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
@@ -88,23 +91,41 @@ recognizeInternalKeyword name past anchor =
        Just z -> z
        Nothing -> unsafeThrow "inconsistency in recognizeInternalKeyword"
 
+anchorIsAllLeft :: Path -> Boolean
+anchorIsAllLeft (PathOffset 0) = true
+anchorIsAllLeft (PathCons 0 rest) = anchorIsAllLeft rest
+anchorIsAllLeft _ = false
+
+focusIsAllRight :: forall a b. Lang a b => Path -> Syntax a b -> Boolean
+-- we're looking for this to fail -- ie if we take one more step right we can't
+-- consume enough characters, hence the `isLeft`
+focusIsAllRight (PathOffset n) syntax = isLeft (makePath syntax (n + 1))
+focusIsAllRight (PathCons dir rest) (Internal _ children) =
+  let numChildren = Array.length children
+      syntax' = unsafePartial (unsafeIndex children dir)
+  in if dir == numChildren - 1
+     then focusIsAllRight rest syntax'
+     else false
+focusIsAllRight _ _ = false
+
 -- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
 operate zipper@{syntax, anchor, focus} action = if anchor == focus
   then operateAtomic zipper action
-  -- TODO this does *not* work if the selected term is, eg,
-  -- `if 1 then _ else _`, because the focus goes further in :(
-  else case Tuple anchor focus of
-         -- kind of a hack to see if consuming `finish + 1` chars takes you
-         -- beyond this syntax
-         Tuple (PathOffset 0) (PathOffset finish) ->
-           case makePath syntax (finish + 1) of
-             -- left indicates failure to consume that many characters -- good!
-             Left _ -> operateWithEntireNodeSelected zipper action
-             -- right indicates success -- bad!
-             Right _ -> Left "spanning actions not yet implemented (1)"
 
-         _ -> Left "spanning actions not yet implemented (2)"
+  -- zoom in as far as possible, then:
+  -- * the start must break out if you move it any further left
+  --   (ie it must have offset 0)
+  -- * the finish "..." right
+  else let zipper' = zoomIn' zipper
+       in if anchorIsAllLeft zipper'.anchor &&
+             focusIsAllRight zipper'.focus zipper'.syntax
+          then operateWithEntireNodeSelected zipper action
+          else Left "spanning actions not yet implemented (1)"
+
+-- | Kind of cheating -- zoom and unwrap
+zoomIn' :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
+zoomIn' z = case zoomIn z of ZoomedSZ z' -> z'
 
 -- throwUserMessage :: forall a. String -> Operate a
 throwUserMessage :: String -> Either String LangZipper
@@ -120,9 +141,6 @@ propose :: LangSyntax -> LangZipper -> LangZipper
 propose syntax z =
   let inferredTy = infer syntax
       oldTy = infer z.syntax
-
-      zoomIn' :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
-      zoomIn' z = case zoomIn z of ZoomedSZ z' -> z'
 
   -- as long as the type changes, keep marching up.
   -- TODO I'm not sure this check is even necessary
