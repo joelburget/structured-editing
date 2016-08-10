@@ -31,17 +31,6 @@ import {
 
 const {hasCommandModifier} = KeyBindingUtil;
 
-// Practice / learn by writing an editor for binary addition expressions with
-// holes
-//
-// Examples:
-// * 1 + 1
-// * (1 + _) + 1
-// * (1 + _) + (3 + 4)
-//
-// Conflicts are going to be very important! They're where propagation stops.
-// Are they different from holes?
-
 const entityTypes = {
   leaf: {
     type: 'TOKEN',
