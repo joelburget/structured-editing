@@ -97,35 +97,21 @@ const DataDecorator = {
 };
 
 
-// Operations to support:
-// * backspace
-// * plus
-// * number
-// * open paren
-function additionKeyBindingFn(e: SyntheticKeyboardEvent): string {
+// The only operation we need to catch and handle specially is backspace.
+// * Regular characters are handled by `handleBeforeInput`
+// * Key combinations are handled by `handleKeyCommand`
+function specialKeyBindings(e: SyntheticKeyboardEvent): string {
   if (!hasCommandModifier(e)) {
-    /*if (e.keyCode >= 0x30 && e.keyCode <= 0x39) {
-      return 'additioneditor-number';
-    } else if (e.key === '(') {
-      return 'additioneditor-openparen';
-    } else if (e.key === '+') {
-      return 'additioneditor-plus';
-    } else*/ if (e.key === 'Backspace') {
-      return 'additioneditor-backspace';
+    if (e.key === 'Backspace') {
+      return 'structurededitor-backspace';
     }
   }
 
   return getDefaultKeyBinding(e);
 }
 
-const defaultSelection = {
-  anchorKey: '',
-  anchorOffset: 0,
-  focusKey: '',
-  focusOffset: 0,
-};
 
-export class AdditionEditor extends React.Component {
+export class StructuredEditor extends React.Component {
   constructor(props) {
     super(props);
 
@@ -144,13 +130,14 @@ export class AdditionEditor extends React.Component {
   }
 
   _handleKeyCommand(command: string): boolean {
-    // const {syntax} = this.props;
     switch (command) {
-      // case 'additioneditor-number':
-      // case 'additioneditor-openparen':
-      // case 'additioneditor-plus':
-      case 'additioneditor-backspace':
+      case 'structurededitor-backspace':
         this.props.onChange({tag: 'backspace'});
+        return true;
+
+      case 'undo':
+      case 'redo':
+        console.log(command + ' not yet implemented!');
         return true;
 
       default:
@@ -231,7 +218,7 @@ export class AdditionEditor extends React.Component {
             editorState={editorState}
             handleKeyCommand={this.handleKeyCommand}
             handleBeforeInput={this.handleBeforeInput}
-            keyBindingFn={additionKeyBindingFn}
+            keyBindingFn={specialKeyBindings}
             onChange={this.handleRawChange}
           />
         </div>
@@ -281,7 +268,7 @@ function handleEither(either, left, right) {
     : right(either.value0);
 }
 
-export class StatefulAdditionEditor extends React.Component {
+export class StatefulStructuredEditor extends React.Component {
   constructor({onChange, selectSyntax}) {
     super();
 
@@ -336,7 +323,10 @@ export class StatefulAdditionEditor extends React.Component {
           opaqueSyntax,
           lastWarning: null,
         });
-        // this.props.onChange(opaqueSyntax, TODO);
+        this.props.onChange(
+          opaqueSyntax,
+          {tag: 'move-cursor', value: anchorFocus}
+        );
       }
     );
   }
@@ -349,7 +339,7 @@ export class StatefulAdditionEditor extends React.Component {
     const {opaqueSyntax, lastWarning} = this.state;
     return (
       <div style={styles.root}>
-        <AdditionEditor
+        <StructuredEditor
           onChange={this.onChange}
           onMoveCursor={this.handleMoveCursor}
           opaqueSyntax={opaqueSyntax}

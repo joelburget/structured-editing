@@ -1,12 +1,10 @@
 import React from 'react';
 import { storiesOf, action } from '@kadira/storybook';
 
-import {StatefulAdditionEditor} from '../AdditionEditor';
+import {StatefulStructuredEditor} from '../StructuredEditor';
 
 const onChange = action('onChange');
-// function onChange(syntax, evt) {
 
-// }
 
 // 1 + hole
 const holeHole = {
@@ -46,7 +44,7 @@ const emptyHole = {
   ]
 };
 
-storiesOf('AdditionEditor', module)
+storiesOf('StructuredEditor', module)
   .add('1 + hole|', () => {
     const selectSyntax = {
       syntax: holeHole,
@@ -54,7 +52,7 @@ storiesOf('AdditionEditor', module)
       focus: 8,
     };
     return (
-      <StatefulAdditionEditor
+      <StatefulStructuredEditor
         onChange={onChange}
         selectSyntax={selectSyntax}
       />
@@ -67,7 +65,7 @@ storiesOf('AdditionEditor', module)
       focus: 5,
     };
     return (
-      <StatefulAdditionEditor
+      <StatefulStructuredEditor
         onChange={onChange}
         selectSyntax={selectSyntax}
       />
@@ -105,7 +103,7 @@ storiesOf('AdditionEditor', module)
       focus: 0,
     };
     return (
-        <StatefulAdditionEditor
+        <StatefulStructuredEditor
       onChange={onChange}
       selectSyntax={selectSyntax}
         />
@@ -136,7 +134,7 @@ storiesOf('AdditionEditor', module)
       focus: 10,
     };
     return (
-        <StatefulAdditionEditor
+        <StatefulStructuredEditor
       onChange={onChange}
       selectSyntax={selectSyntax}
         />
@@ -170,7 +168,7 @@ storiesOf('AdditionEditor', module)
       focus: 0,
     };
     return (
-      <StatefulAdditionEditor
+      <StatefulStructuredEditor
         onChange={onChange}
         selectSyntax={selectSyntax}
       />
@@ -216,7 +214,7 @@ storiesOf('AdditionEditor', module)
       focus: 1,
     };
     return (
-      <StatefulAdditionEditor
+      <StatefulStructuredEditor
         onChange={onChange}
         selectSyntax={selectSyntax}
       />
