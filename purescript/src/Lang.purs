@@ -30,6 +30,7 @@ data Internal
   | Parens
   | Eq
   | ArrTy
+  | Annot
 
 derive instance genericInternal :: Generic Internal
 instance showInternal :: Show Internal where show = gShow
@@ -43,6 +44,7 @@ instance internalIsForeign :: IsForeign Internal where
       "parens" -> pure Parens
       "eq" -> pure Eq
       "arr-ty" -> pure ArrTy
+      "annot" -> pure Annot
       _ -> Left (JSONError "found unexpected value in internalIsForeign")
 
 data Leaf
@@ -98,6 +100,7 @@ norm (Internal IfThenElse [i, l, r]) = case normalizeChildren [i, l, r] of
   Right _ -> unsafeThrow "if branching on non-boolean"
   Left children' -> Left $ Internal IfThenElse children'
 norm (Internal Parens [x]) = norm x
+norm (Internal Annot [tm, _]) = norm tm
 norm i@(Internal Eq [x, y]) = case normalizeChildren [x, y] of
   Right [Leaf (IntLeaf a), Leaf (IntLeaf b)] -> Right $ Leaf (BoolLeaf (a == b))
   Right [Leaf (BoolLeaf a), Leaf (BoolLeaf b)] -> Right $ Leaf (BoolLeaf (a == b))
@@ -122,6 +125,8 @@ inf (Internal Parens [x]) = inf x
 inf (Internal Parens _) = unsafeThrow "deeply broken inf (Internal Parens _)"
 inf (Internal Eq _) = Leaf BoolTy
 inf (Internal ArrTy _) = Leaf TyTy
+inf (Internal Annot [_, ty]) = ty
+inf (Internal Annot _) = unsafeThrow "invariant violation: inf (Internal Annot _)"
 inf (Leaf (BoolLeaf _)) = Leaf BoolTy
 inf (Leaf (IntLeaf _)) = Leaf IntTy
 inf (Leaf IntTy) = Leaf TyTy
@@ -154,6 +159,15 @@ unify l (Internal Parens [x]) = unify l x
 
 unify (Internal ArrTy [l1, r1]) (Internal ArrTy [l2, r2]) =
   (\l r -> Internal ArrTy [l, r]) <$> unify l1 l2 <*> unify r1 r2
+
+unify (Internal Annot [tm1, ty1]) (Internal Annot [tm2, ty2]) =
+  (\tm ty -> Internal Annot [tm, ty]) <$> unify tm1 tm2 <*> unify ty1 ty2
+
+unify (Internal Annot [tm1, ty]) tm2 =
+  (\tm -> Internal Annot [tm, ty]) <$> unify tm1 tm2
+
+unify tm1 (Internal Annot [tm2, ty]) =
+  (\tm -> Internal Annot [tm, ty]) <$> unify tm1 tm2
 
 -- these need to be reduced
 unify x@(Internal IfThenElse _) r = case norm' x of
@@ -205,6 +219,8 @@ updateChildType term {ix, newTm, newTy} =
         Internal Eq _ -> unsafeThrow "deeply broken inf (Internal Eq _)"
         Internal ArrTy [l, r] -> ty
         Internal ArrTy _ -> unsafeThrow "deeply broken updateChildType (Internal ArrTy _)"
+        Internal Annot [_, ty] -> ty
+        Internal Annot _ -> unsafeThrow "invariant violation: updateChildType (Internal Annot _)"
         Leaf _ -> unsafeThrow "deeply broken updateChildType (Leaf _)"
         Hole _ -> unsafeThrow "deeply broken updateChildType (Hole _)"
         Conflict {expectedTy} -> expectedTy
@@ -236,6 +252,7 @@ instance intBoolIsLang :: Lang Internal Leaf where
       Parens -> "({})"
       Eq -> "{} == {}"
       ArrTy -> "{} -> {}"
+      Annot -> "{} : {}"
       -- TODO determine if we can remove the template in Main.purs for this one
       -- Nothing -> "conflict: {{}: expected {} vs actual {}}"
     _ -> unsafeThrow "inconsistency: couldn't get internal template"

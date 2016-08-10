@@ -74,6 +74,7 @@ internalKeywords = Map.fromFoldable
   , Tuple "if" (Internal IfThenElse [Hole "_", Hole "_", Hole "_"])
   , Tuple "==" (Internal Eq [Hole "_", Hole "_"])
   , Tuple "->" (Internal ArrTy [Hole "_", Hole "_"])
+  , Tuple ":" (Internal Annot [Hole "_", Hole "_"])
   ]
 
 recognizeInternalKeyword :: String -> LangPast -> Path -> LangZipper
