@@ -19,7 +19,8 @@
     "purescript-generics": "~1.0.1",
     "purescript-test-unit": "~7.0.0",
     "purescript-foreign-generic": "~1.0.0",
-    "purescript-lists": "~1.0.1"
+    "purescript-lists": "~1.0.1",
+    "purescript-debug": "^1.0.0"
   },
   "resolutions": {
     "purescript-bifunctors": "^1.0.0",
