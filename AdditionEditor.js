@@ -248,9 +248,9 @@ export class AdditionEditor extends React.Component {
         </div>
         <div style={styles.info}>
           <h3>info</h3>
-          <p>anchor: <AdditionDisplay opaqueSyntax={anchorInfo} /></p>
-          <p>focus: <AdditionDisplay opaqueSyntax={focusInfo} /></p>
-          <p>evaluated: <AdditionDisplay opaqueSyntax={evaluated} /></p>
+          <div>anchor: <AdditionDisplay opaqueSyntax={anchorInfo} /></div>
+          <div>focus: <AdditionDisplay opaqueSyntax={focusInfo} /></div>
+          <div>evaluated: <AdditionDisplay opaqueSyntax={evaluated} /></div>
           <h3>conflicts</h3>
           <ul style={styles.conflictList}>
             {conflicts}
