@@ -7,7 +7,7 @@ import Data.Foldable (any)
 import Data.Foreign (ForeignError(JSONError), readString)
 import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Generic (class Generic, gShow, gEq)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isJust)
 import Data.Tuple
 import Syntax
 import Template
@@ -199,14 +199,17 @@ unify (Conflict _) _ = Nothing
 unify _ _ = Nothing
 
 -- | This node's child changed types -- update accordingly.
-updateChildType :: LangSyntax -> {ix :: Int, newTm :: LangSyntax, newTy :: LangSyntax} -> LangSyntax
-updateChildType term {ix, newTm, newTy} =
+propagateUpChildType
+  :: LangSyntax
+  -> {ix :: Int, newTm :: LangSyntax, newTy :: LangSyntax}
+  -> LangSyntax
+propagateUpChildType term {ix, newTm, newTy} =
   let expectedTy = case term of
         Internal IfThenElse [c, l, r] -> case ix of
           0 -> bool
           1 -> infer r
           2 -> infer l
-          _ -> unsafeThrow $ "deeply broken updateChildType (Internal IfThenElse), ix: " <> show ix
+          _ -> unsafeThrow $ "deeply broken propagateUpChildType (Internal IfThenElse), ix: " <> show ix
         Internal IfThenElse _ -> unsafeThrow "deeply broken inf (Internal IfThenElse _)"
         Internal Addition [l, r] -> int
         Internal Addition _ -> unsafeThrow "deeply broken inf (Internal Addition _)"
@@ -215,14 +218,14 @@ updateChildType term {ix, newTm, newTy} =
         Internal Eq [l, r] -> case ix of
           0 -> infer r
           1 -> infer l
-          _ -> unsafeThrow $ "deeply broken updateChildType (Internal Eq), ix: " <> show ix
+          _ -> unsafeThrow $ "deeply broken propagateUpChildType (Internal Eq), ix: " <> show ix
         Internal Eq _ -> unsafeThrow "deeply broken inf (Internal Eq _)"
         Internal ArrTy [l, r] -> ty
-        Internal ArrTy _ -> unsafeThrow "deeply broken updateChildType (Internal ArrTy _)"
+        Internal ArrTy _ -> unsafeThrow "deeply broken propagateUpChildType (Internal ArrTy _)"
         Internal Annot [_, ty] -> ty
-        Internal Annot _ -> unsafeThrow "invariant violation: updateChildType (Internal Annot _)"
-        Leaf _ -> unsafeThrow "deeply broken updateChildType (Leaf _)"
-        Hole _ -> unsafeThrow "deeply broken updateChildType (Hole _)"
+        Internal Annot _ -> unsafeThrow "invariant violation: propagateUpChildType (Internal Annot _)"
+        Leaf _ -> unsafeThrow "deeply broken propagateUpChildType (Leaf _)"
+        Hole _ -> unsafeThrow "deeply broken propagateUpChildType (Hole _)"
         Conflict {expectedTy} -> expectedTy
       -- TODO pull out extra information!
       child = case unify newTy expectedTy of
@@ -233,8 +236,37 @@ updateChildType term {ix, newTm, newTy} =
        Conflict _ -> child
        _ -> unsafeUpdateChild {term, child} ix
 
-constrainType :: {term :: LangSyntax, newTy :: LangSyntax} -> LangSyntax
-constrainType {term, newTy} = unsafeThrow "constrainType not yet implemented"
+
+-- XXX probably need to check that tm and ty match first
+propagateDownChildTypes
+  :: {tm :: LangSyntax, ty :: LangSyntax}
+  -> LangSyntax
+propagateDownChildTypes {tm: Internal IfThenElse [c, l, r], ty}
+  = Internal IfThenElse
+    [ c
+    , propagateDownChildTypes {tm: l, ty}
+    , propagateDownChildTypes {tm: r, ty}
+    ]
+-- we can't learn anything new -- addition already constrains its children
+propagateDownChildTypes {tm: tm@(Internal Addition [_, _])} = tm
+propagateDownChildTypes {tm: Internal Parens [tm], ty}
+  = propagateDownChildTypes {tm, ty}
+propagateDownChildTypes {tm: tm@(Internal Eq [_, _])} = tm
+propagateDownChildTypes {tm: tm@(Internal ArrTy [_, _])} = tm
+propagateDownChildTypes {tm: Internal Annot [subTm, subTy], ty}
+  = let newTy = case unify ty subTy of
+                  Just unifiedTy -> unifiedTy
+                  Nothing -> unsafeThrow "invariant violation: expected downward propagated ty to match annotated"
+    in Internal Annot [ propagateDownChildTypes {tm: subTy, ty: newTy}, newTy ]
+propagateDownChildTypes {tm: Internal _ _, ty}
+  = unsafeThrow "invariant violation: propagateDownChildTypes Internal _ _"
+propagateDownChildTypes {tm: tm@(Leaf _), ty} = tm
+propagateDownChildTypes {tm: Conflict {term, actualTy}, ty} =
+  if isJust $ unify actualTy ty
+  then term
+  else Conflict {term, expectedTy: ty, actualTy}
+propagateDownChildTypes {tm: tm@(Hole _), ty} = Internal Annot [tm, ty]
+
 
 instance intBoolIsLang :: Lang Internal Leaf where
   getLeafTemplate l = case l of
@@ -259,7 +291,7 @@ instance intBoolIsLang :: Lang Internal Leaf where
 
   normalize = norm'
 
-  updateChildType = updateChildType
-  constrainType = constrainType
+  propagateUpChildType = propagateUpChildType
+  propagateDownChildTypes = propagateDownChildTypes
 
   infer = inf

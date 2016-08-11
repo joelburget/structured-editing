@@ -41,12 +41,14 @@ class Lang internal leaf where
   -- small-step semantics rather than a big-step all-at-once evaluation
   normalize :: Syntax internal leaf -> Syntax internal leaf
 
-  updateChildType :: Syntax internal leaf
-                  -> {ix :: Int, newTm :: Syntax internal leaf, newTy :: Syntax internal leaf}
-                  -> Syntax internal leaf
+  propagateUpChildType
+    :: Syntax internal leaf
+    -> {ix :: Int, newTm :: Syntax internal leaf, newTy :: Syntax internal leaf}
+    -> Syntax internal leaf
 
-  constrainType :: {term :: Syntax internal leaf, newTy :: Syntax internal leaf}
-                -> Syntax internal leaf
+  propagateDownChildTypes
+    :: {tm :: Syntax internal leaf, ty :: Syntax internal leaf}
+    -> Syntax internal leaf
 
   infer :: Syntax internal leaf -> Syntax internal leaf
 

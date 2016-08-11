@@ -20,8 +20,8 @@ import Data.Tuple (Tuple(..))
 import Partial.Unsafe (unsafePartial)
 
 import Path (Path(..), (.+), PathStep)
-import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, updateChildType, constrainType, zoomIn, ZoomedSZ(..), makePath)
-import Util (isDigit, spliceStr, spliceArr)
+import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpChildType, propagateDownChildTypes, zoomIn, ZoomedSZ(..), makePath)
+import Util (isDigit, spliceStr, spliceArr, traceAnyId)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
 
@@ -166,31 +166,44 @@ throwUserMessage = Left
 -- | Why do you need to "propose"? Because the update could conflict with other
 -- | values.
 -- |
--- | Uses updateChildType to move up the zipper and constrainType to move down.
+-- | Uses propagateUpChildType to move up the zipper and constrainType to move down.
 propose :: LangSyntax -> LangZipper -> LangZipper
 propose syntax z =
   let inferredTy = infer syntax
       oldTy = infer z.syntax
 
-  -- as long as the type changes, keep marching up.
-  -- TODO I'm not sure this check is even necessary
-  in if oldTy == inferredTy
+      -- as long as the type changes, keep marching up.
+      -- TODO I'm not sure this check is even necessary
+      propagatedUp = traceAnyId $ if oldTy == inferredTy
+        then z {syntax = syntax}
+        -- okay, we have differing types:
+        -- * try to push this type up the tree with `propagateUpChildType`
+        else case up z of
+          Just {zipper: z', prevLoc} ->
+            let syntax' = propagateUpChildType
+                  z'.syntax
+                  {ix: prevLoc, newTm: syntax, newTy: inferredTy}
+            in case syntax' of
+                 c@(Conflict _) ->
+                   z' { syntax = c
+                      -- point to the term
+                      , anchor = PathCons 0 (PathOffset 0)
+                      , focus = PathCons 0 (PathOffset 0)
+                      }
+                 syntax' -> propose syntax' z'
+          -- reached the top, fill it in
+          Nothing -> z {syntax = syntax}
+
+      -- now march down to update the children
+      finalSyntax = traceAnyId $ propagateDownChildTypes
+        { tm: propagatedUp.syntax
+        -- XXX I *don't* think this is right
+        , ty: inferredTy
+        }
+      propagatedDown = z {syntax = finalSyntax}
+
      -- make sure to zoom in once we've finished resolving changes
-     -- TODO maybe this should be factored out?
-     then zoomIn' $ z {syntax = syntax}
-     -- okay, we have differing types:
-     -- * try to push this type up the tree with `updateChildType`
-     else case up z of
-       Just {zipper: z', prevLoc} -> case updateChildType z'.syntax {ix: prevLoc, newTm: syntax, newTy: inferredTy} of
-         c@(Conflict _) -> zoomIn' $
-           z' { syntax = c
-              -- point to the term
-              , anchor = PathCons 0 (PathOffset 0)
-              , focus = PathCons 0 (PathOffset 0)
-              }
-         syntax' -> propose syntax' z'
-       -- reached the top, fill it in
-       Nothing -> zoomIn' $ z {syntax = syntax}
+  in zoomIn' propagatedUp -- propagatedDown
 
 operateOffsetsInNode :: LangZipper -> Action -> Int -> Int -> Either String LangZipper
 operateOffsetsInNode zipper action start end = case Tuple zipper.syntax action of
