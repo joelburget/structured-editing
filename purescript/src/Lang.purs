@@ -204,75 +204,84 @@ unify _ _ = Nothing
 -- | There's some subtlety here -- the child node knows what type it needs to
 -- | be, so our job is to use any other information we have -- eg from other
 -- | child nodes to either accept or conflict that child.
-propagateUpChildType
-  :: LangSyntax
-  -> {ix :: Int, newChildTm :: LangSyntax, newChildTy :: LangSyntax}
-  -> LangSyntax
-propagateUpChildType term {ix, newChildTm, newChildTy} =
-  let inferredChildTy = case term of
-        Internal IfThenElse [c, l, r] -> case ix of
-          0 -> bool
-          1 -> infer r
-          2 -> infer l
-          _ -> unsafeThrow $ "deeply broken propagateUpChildType (Internal IfThenElse), ix: " <> show ix
-        Internal IfThenElse _ -> unsafeThrow "deeply broken inf (Internal IfThenElse _)"
-        Internal Addition [l, r] -> int
-        Internal Addition _ -> unsafeThrow "deeply broken inf (Internal Addition _)"
-        Internal Parens [x] -> term
-        Internal Parens _ -> unsafeThrow "deeply broken inf (Internal Parens _)"
-        Internal Eq [l, r] -> case ix of
-          0 -> infer r
-          1 -> infer l
-          _ -> unsafeThrow $ "deeply broken propagateUpChildType (Internal Eq), ix: " <> show ix
-        Internal Eq _ -> unsafeThrow "deeply broken inf (Internal Eq _)"
-        Internal ArrTy [l, r] -> ty
-        Internal ArrTy _ -> unsafeThrow "deeply broken propagateUpChildType (Internal ArrTy _)"
-        Internal Annot [_, ty] -> ty
-        Internal Annot _ -> unsafeThrow "invariant violation: propagateUpChildType (Internal Annot _)"
-        Leaf _ -> unsafeThrow "deeply broken propagateUpChildType (Leaf _)"
-        Hole _ -> unsafeThrow "deeply broken propagateUpChildType (Hole _)"
-        Conflict {outsideTy} -> outsideTy
-      -- TODO pull out extra information! (unification produces kind of an
-      -- information delta, rather than just a boolean)
-      child = case unify newChildTy inferredChildTy of
-        Just _ -> newChildTm
-        _ -> Conflict {term: newChildTm, insideTy: newChildTy, outsideTy: inferredChildTy}
-  in case term of
-       -- replace it with the conflict or non-conflict we found
-       Conflict _ -> child
-       _ -> unsafeUpdateChild {term, child} ix
+propagateUpType
+  :: LangZipper
+  -> LangSyntax -- new type
+  -> LangZipper
+-- assuming the current location can take on this type...
+propagateUpType z insideTy = case up z of
+  Nothing -> z
+  Just {zipper: z', prevLoc} ->
+    let outsideTy = case z'.syntax of
+          Internal IfThenElse [c, l, r] -> case prevLoc of
+            0 -> bool
+            1 -> inf r
+            2 -> inf l
+            _ -> unsafeThrow $ "invariant violation: propagateUpType (Internal IfThenElse), prevLoc: " <> show prevLoc
+          Internal IfThenElse _ -> unsafeThrow "invariant violation: propagateUpType (Internal IfThenElse _)"
+          Internal Addition [l, r] -> int
+          Internal Addition _ -> unsafeThrow "invariant violation: propagateUpType (Internal Addition _)"
+          Internal Parens [x] -> inf x
+          Internal Parens _ -> unsafeThrow "invariant violation: propagateUpType (Internal Parens _)"
+          Internal Eq [l, r] -> case prevLoc of
+            0 -> inf r
+            1 -> inf l
+            _ -> unsafeThrow $ "invariant violation: propagateUpType (Internal Eq), prevLoc: " <> show prevLoc
+          Internal Eq _ -> unsafeThrow "invariant violation: propagateUpType (Internal Eq _)"
+          Internal ArrTy [l, r] -> ty
+          Internal ArrTy _ -> unsafeThrow "invariant violation: propagateUpType (Internal ArrTy _)"
+          Internal Annot [_, ty] -> ty
+          Internal Annot _ -> unsafeThrow "invariant violation: propagateUpType (Internal Annot _)"
+          Conflict {insideTy} -> insideTy
+          Leaf _ -> unsafeThrow "invariant violation: propagateUpType (Leaf _)"
+          Hole _ -> unsafeThrow "invariant violation: propagateUpType (Hole _)"
+
+    in case unify insideTy outsideTy of
+         Just unifiedTy -> propagateUpType z' unifiedTy
+         Nothing -> z' {
+           -- reversal!
+           syntax = propagateDownType {term: z'.syntax, outsideTy: insideTy}
+           }
 
 
--- XXX probably need to check that tm and ty match first
+-- XXX probably need to check that term and ty match first
 -- | Propagate type information we can use from this type down to the children.
-propagateDownChildTypes
-  :: {tm :: LangSyntax, ty :: LangSyntax}
-  -> LangSyntax
-propagateDownChildTypes {tm: Internal IfThenElse [c, l, r], ty}
-  = Internal IfThenElse
-    [ c
-    , propagateDownChildTypes {tm: l, ty}
-    , propagateDownChildTypes {tm: r, ty}
-    ]
--- we can't learn anything new -- addition already constrains its children
-propagateDownChildTypes {tm: tm@(Internal Addition [_, _])} = tm
-propagateDownChildTypes {tm: Internal Parens [tm], ty}
-  = propagateDownChildTypes {tm, ty}
-propagateDownChildTypes {tm: tm@(Internal Eq [_, _])} = tm
-propagateDownChildTypes {tm: tm@(Internal ArrTy [_, _])} = tm
-propagateDownChildTypes {tm: Internal Annot [subTm, subTy], ty}
-  = let newTy = case unify ty subTy of
-                  Just unifiedTy -> unifiedTy
-                  Nothing -> unsafeThrow "invariant violation: expected downward propagated ty to match annotated"
-    in Internal Annot [ propagateDownChildTypes {tm: subTy, ty: newTy}, newTy ]
-propagateDownChildTypes {tm: Internal _ _, ty}
-  = unsafeThrow "invariant violation: propagateDownChildTypes Internal _ _"
-propagateDownChildTypes {tm: tm@(Leaf _), ty} = tm
-propagateDownChildTypes {tm: Conflict {term, insideTy}, ty} =
-  if isJust $ traceAnyId $ unify insideTy ty
-  then term
-  else Conflict {term, outsideTy: ty, insideTy}
-propagateDownChildTypes {tm: tm@(Hole _), ty} = Internal Annot [tm, ty]
+propagateDownType :: {term :: LangSyntax, outsideTy :: LangSyntax} -> LangSyntax
+propagateDownType {term, outsideTy} = case term of
+  Internal IfThenElse [c, l, r] ->
+    Internal IfThenElse
+      [ c
+      , propagateDownType {term: l, outsideTy}
+      , propagateDownType {term: r, outsideTy}
+      ]
+  -- we can't learn anything new -- addition already constrains its children
+  term@(Internal Addition [_, _]) -> case unify outsideTy int of
+    Just _ -> term
+    Nothing -> Conflict {term, insideTy: int, outsideTy}
+  Internal Parens [term] -> propagateDownType {term, outsideTy}
+  term@(Internal Eq [l, r]) -> case unify outsideTy bool of
+    Just _ -> term
+    Nothing -> Conflict {term, insideTy: bool, outsideTy}
+  term@(Internal ArrTy [_, _]) -> case unify outsideTy ty of
+    Just _ -> term
+    Nothing -> Conflict {term, insideTy: ty, outsideTy}
+  term@(Internal Annot [subTm, insideTy]) -> case unify outsideTy insideTy of
+    Just newTy -> Internal Annot
+      [ propagateDownType {term: subTm, outsideTy: newTy}
+      , newTy
+      ]
+    Nothing -> Conflict {term, insideTy, outsideTy}
+  Internal _ _ ->
+    unsafeThrow "invariant violation: propagateDownType Internal _ _"
+  term@(Leaf _) ->
+    let insideTy = inf term
+    in case unify outsideTy insideTy of
+         Just _ -> term
+         Nothing -> Conflict {term, outsideTy, insideTy}
+  Conflict {term, insideTy} -> case unify insideTy outsideTy of
+    Just _ -> term
+    Nothing -> Conflict {term, outsideTy, insideTy}
+  term@(Hole _) -> Internal Annot [term, outsideTy]
 
 
 instance intBoolIsLang :: Lang Internal Leaf where
@@ -298,7 +307,7 @@ instance intBoolIsLang :: Lang Internal Leaf where
 
   normalize = norm'
 
-  propagateUpChildType = propagateUpChildType
-  propagateDownChildTypes = propagateDownChildTypes
+  propagateUpType = propagateUpType
+  propagateDownType = propagateDownType
 
   infer = inf

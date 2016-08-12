@@ -21,11 +21,10 @@ import Data.Tuple (Tuple(..))
 import Partial.Unsafe (unsafePartial)
 
 import Path (CursorPath(..), (.+), PathStep)
-import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpChildType, propagateDownChildTypes, zoomIn, ZoomedSZ(..), makePath, bookmark, moveTo, zipUp)
+import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpType, propagateDownType, zoomIn, ZoomedSZ(..), makePath, bookmark, moveTo, zipUp)
 import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
-import Debug.Trace
 
 data Action
   = Backspace
@@ -151,14 +150,26 @@ resolveConflictAt z action =
           "invariant violation: resolveConflictAt called with unexpected action"
       z' = moveTo (zipUp z) loc
       z'' = case Tuple z'.syntax action of
-        Tuple (Conflict {outsideTy}) (TakeOutside _) ->
-          updateTypeOf z' outsideTy
-        Tuple (Conflict {insideTy}) (TakeInside _) ->
-          updateTypeOf z' insideTy
+        Tuple (Conflict {term, outsideTy}) (TakeOutside _) ->
+          let syntax = propagateDownType {term, outsideTy}
+          in z' {syntax = syntax}
+        Tuple (Conflict {term, insideTy}) (TakeInside _) ->
+          let nonConflicting = z' {syntax = term}
+          in propagateUpType nonConflicting insideTy
         Tuple _ _ -> unsafeThrow
           "invariant violation: resolveConflictAt: unexpected conflict / action"
       z''' = moveTo (zipUp z'') bmark.zoom
   in Right $ z''' {anchor = bmark.anchor, focus = bmark.focus}
+
+updateTypeOf :: LangZipper -> LangSyntax -> LangZipper
+updateTypeOf z outsideTy =
+      -- now march down to update the children
+  let syntax = propagateDownType
+        { term: z.syntax
+        -- XXX I *don't* think this is right
+        , outsideTy
+        }
+  in z {syntax = syntax}
 
 -- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
@@ -199,46 +210,12 @@ throwUserMessage = Left
 -- | Why do you need to "propose"? Because the update could conflict with other
 -- | values.
 -- |
--- | Uses propagateUpChildType to move up the zipper.
+-- | Uses propagateUpType to move up the zipper.
 proposeNew :: LangSyntax -> LangZipper -> LangZipper
 proposeNew syntax z =
   let inferredTy = infer syntax
-      oldTy = infer z.syntax
-
-      -- as long as the type changes, keep marching up.
-      -- TODO I'm not sure this check is even necessary
-      propagatedUp = if oldTy == inferredTy
-        then z {syntax = syntax}
-        -- okay, we have differing types:
-        -- * try to push this type up the tree with `propagateUpChildType`
-        else case up z of
-          Just {zipper: z', prevLoc} ->
-            let syntax' = propagateUpChildType
-                  z'.syntax
-                  {ix: prevLoc, newChildTm: syntax, newChildTy: inferredTy}
-            in case syntax' of
-                 c@(Conflict _) ->
-                   z' { syntax = c
-                      -- point to the term
-                      , anchor = PathCons 0 (PathOffset 0)
-                      , focus = PathCons 0 (PathOffset 0)
-                      }
-                 syntax' -> proposeNew syntax' z'
-          -- reached the top, fill it in
-          Nothing -> z {syntax = syntax}
-
-     -- make sure to zoom in once we've finished resolving changes
-  in zoomIn' propagatedUp
-
-updateTypeOf :: LangZipper -> LangSyntax -> LangZipper
-updateTypeOf z ty =
-      -- now march down to update the children
-  let syntax = propagateDownChildTypes
-        { tm: z.syntax
-        -- XXX I *don't* think this is right
-        , ty
-        }
-  in traceAny (Tuple z.syntax ty) \_ -> z {syntax = syntax}
+      z' = z {syntax = syntax}
+  in zoomIn' $ propagateUpType z' inferredTy
 
 operateOffsetsInNode :: LangZipper -> Action -> Int -> Int -> Either String LangZipper
 operateOffsetsInNode zipper action start end = case Tuple zipper.syntax action of

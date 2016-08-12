@@ -22,7 +22,6 @@ import Data.String (length)
 import Partial.Unsafe (unsafePartial)
 import Path (CursorPath(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
 
-import Debug.Trace
 
 throwE :: forall e m a. Applicative m => e -> ExceptT e m a
 throwE = ExceptT <<< pure <<< Left
@@ -42,13 +41,13 @@ class Lang internal leaf where
   -- small-step semantics rather than a big-step all-at-once evaluation
   normalize :: Syntax internal leaf -> Syntax internal leaf
 
-  propagateUpChildType
-    :: Syntax internal leaf
-    -> {ix :: Int, newChildTm :: Syntax internal leaf, newChildTy :: Syntax internal leaf}
+  propagateUpType
+    :: SyntaxZipper internal leaf
     -> Syntax internal leaf
+    -> SyntaxZipper internal leaf
 
-  propagateDownChildTypes
-    :: {tm :: Syntax internal leaf, ty :: Syntax internal leaf}
+  propagateDownType
+    :: {term :: Syntax internal leaf, outsideTy :: Syntax internal leaf}
     -> Syntax internal leaf
 
   infer :: Syntax internal leaf -> Syntax internal leaf
@@ -154,7 +153,8 @@ moveTo z steps = case Array.uncons steps of
   Just {head, tail} ->
     let subZ = case down head z of
           Just z' -> z'
-          Nothing -> unsafeThrow "invariant violation: moveTo couldn't move down"
+          -- XXX what if the bookmark went away because it was resolved?
+          Nothing -> z -- unsafeThrow "invariant violation: moveTo couldn't move down"
     in moveTo subZ tail
   Nothing -> z
 
@@ -184,7 +184,7 @@ zoomIn :: forall a b. SyntaxZipper a b -> ZoomedSZ a b
 zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
   Leaf _ -> ZoomedSZ zipper
   Hole _ -> ZoomedSZ zipper
-  Conflict {term, outsideTy, insideTy} ->
+  Conflict _ ->
     if pathHead anchor == pathHead focus
     then
       let go = do
@@ -273,6 +273,16 @@ zoomSelection {anchor, focus} step =
 -- XXX get the anchor and focus right
 down :: forall a b. PathStep -> SyntaxZipper a b -> Maybe (SyntaxZipper a b)
 down dir zipper@{syntax, past} = case syntax of
+  Conflict _ -> case conflictIx dir syntax of
+    {value, otherChildren} -> do
+      let zoomed = zoomSelection zipper dir
+      pure
+        -- XXX unsafe
+        { syntax: value
+        , past: {dir, otherChildren, value: ConflictValue} : past
+        , anchor: zoomed.anchor
+        , focus: zoomed.focus
+        }
   Internal value children -> do
     let otherChildren = spliceArr children dir 1 []
         zoomed = zoomSelection zipper dir
