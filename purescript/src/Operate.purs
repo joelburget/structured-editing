@@ -16,18 +16,22 @@ import Data.String (length)
 import Data.String as String
 import Data.Map as Map
 import Data.Map (Map, member)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Partial.Unsafe (unsafePartial)
 
-import Path (Path(..), (.+), PathStep)
-import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpChildType, propagateDownChildTypes, zoomIn, ZoomedSZ(..), makePath)
-import Util (isDigit, spliceStr, spliceArr, traceAnyId)
+import Path (CursorPath(..), (.+), PathStep)
+import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpChildType, propagateDownChildTypes, zoomIn, ZoomedSZ(..), makePath, bookmark, moveTo, zipUp)
+import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
+import Debug.Trace
 
 data Action
   = Backspace
   | Typing Char
+  | TakeInside (Array PathStep)
+  | TakeOutside (Array PathStep)
 
 derive instance genericAction :: Generic Action
 instance showAction :: Show Action where show = gShow
@@ -43,6 +47,8 @@ instance actionIsForeign :: IsForeign Action where
     case tag of
       "typing" -> Typing <$> readProp "value" obj
       "backspace" -> pure Backspace
+      "take-outside" -> TakeOutside <$> readProp "loc" obj
+      "take-inside" -> TakeInside <$> readProp "loc" obj
       _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
 leafKeywords :: Map String LangSyntax
@@ -54,7 +60,7 @@ leafKeywords = map Leaf $ Map.fromFoldable
   , Tuple "bool" BoolTy
   ]
 
-recognizeLeafKeyword :: String -> LangPast -> Path -> LangZipper
+recognizeLeafKeyword :: String -> LangPast -> CursorPath -> LangZipper
 recognizeLeafKeyword name past anchor =
   let syntax = case Map.lookup name leafKeywords of
         Just s -> s
@@ -65,7 +71,7 @@ recognizeLeafKeyword name past anchor =
           , anchor: anchor .+ 1
           , focus: anchor .+ 1
           }
-  in propose syntax z
+  in proposeNew syntax z
 
 internalKeywords :: Map String LangSyntax
 internalKeywords = Map.fromFoldable
@@ -77,7 +83,7 @@ internalKeywords = Map.fromFoldable
   , Tuple ":" (Internal Annot [Hole "_", Hole "_"])
   ]
 
-recognizeInternalKeyword :: String -> LangPast -> Path -> LangZipper
+recognizeInternalKeyword :: String -> LangPast -> CursorPath -> LangZipper
 recognizeInternalKeyword name past anchor =
   let syntax = case Map.lookup name internalKeywords of
         Just s -> s
@@ -92,12 +98,12 @@ recognizeInternalKeyword name past anchor =
        Just z -> z
        Nothing -> unsafeThrow "inconsistency in recognizeInternalKeyword"
 
-anchorIsAllLeft :: Path -> Boolean
+anchorIsAllLeft :: CursorPath -> Boolean
 anchorIsAllLeft (PathOffset 0) = true
 anchorIsAllLeft (PathCons 0 rest) = anchorIsAllLeft rest
 anchorIsAllLeft _ = false
 
-focusIsAllRight :: forall a b. Lang a b => Path -> Syntax a b -> Boolean
+focusIsAllRight :: forall a b. Lang a b => CursorPath -> Syntax a b -> Boolean
 -- we're looking for this to fail -- ie if we take one more step right we can't
 -- consume enough characters, hence the `isLeft`
 focusIsAllRight (PathOffset n) syntax = isLeft (makePath syntax (n + 1))
@@ -133,25 +139,52 @@ suggestCoherentSelection zipper =
             Tuple (PathOffset _) (PathCons _ _) -> MoveStart
             Tuple (PathCons _ _) (PathOffset _) -> MoveFinish
             Tuple (PathCons _ _) (PathCons _ _) -> MoveBoth
+            Tuple _ _ -> NoSuggestion
+
+resolveConflictAt :: LangZipper -> Action -> Either String LangZipper
+resolveConflictAt z action =
+  let bmark = bookmark z
+      loc = case action of
+        TakeOutside loc -> loc
+        TakeInside loc -> loc
+        _ -> unsafeThrow
+          "invariant violation: resolveConflictAt called with unexpected action"
+      z' = moveTo (zipUp z) loc
+      z'' = case Tuple z'.syntax action of
+        Tuple (Conflict {outsideTy}) (TakeOutside _) ->
+          updateTypeOf z' outsideTy
+        Tuple (Conflict {insideTy}) (TakeInside _) ->
+          updateTypeOf z' insideTy
+        Tuple _ _ -> unsafeThrow
+          "invariant violation: resolveConflictAt: unexpected conflict / action"
+      z''' = moveTo (zipUp z'') bmark.zoom
+  in Right $ z''' {anchor = bmark.anchor, focus = bmark.focus}
 
 -- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
-operate zipper@{syntax, anchor, focus} action = if anchor == focus
-  then operateAtomic zipper action
+operate zipper@{syntax, anchor, focus} action = case action of
+  (TakeOutside _) -> resolveConflictAt zipper action
+  (TakeInside _) -> resolveConflictAt zipper action
+  _ -> if anchor == focus
+    then operateAtomic zipper action
 
-  -- zoom in as far as possible, then:
-  -- * the start must break out if you move it any further left
-  --   (ie it must have offset 0)
-  -- * the finish "..." right
-  else let zipper' = zoomIn' zipper
-           anchor = zipper'.anchor
-           focus = zipper'.focus
-       in if anchorIsAllLeft anchor && focusIsAllRight focus zipper'.syntax
-          then operateWithEntireNodeSelected zipper action
-          else case Tuple anchor focus of
-                 Tuple (PathOffset aOff) (PathOffset fOff) ->
-                   operateOffsetsInNode zipper action (min aOff fOff) (max aOff fOff)
-                 _ -> Left "spanning actions not yet implemented (1)"
+    -- zoom in as far as possible, then:
+    -- * the start must break out if you move it any further left
+    --   (ie it must have offset 0)
+    -- * the finish "..." right
+    else let zipper' = zoomIn' zipper
+             anchor = zipper'.anchor
+             focus = zipper'.focus
+         in if anchorIsAllLeft anchor && focusIsAllRight focus zipper'.syntax
+            then operateWithEntireNodeSelected zipper action
+            else case Tuple anchor focus of
+                   Tuple (PathOffset aOff) (PathOffset fOff) ->
+                     operateOffsetsInNode
+                       zipper
+                       action
+                       (min aOff fOff)
+                       (max aOff fOff)
+                   _ -> Left "spanning actions not yet implemented (1)"
 
 -- | Kind of cheating -- zoom and unwrap
 zoomIn' :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
@@ -161,20 +194,20 @@ zoomIn' z = case zoomIn z of ZoomedSZ z' -> z'
 throwUserMessage :: String -> Either String LangZipper
 throwUserMessage = Left
 
--- | Propose an updated value at this point in the zipper
+-- | Propose a new node.
 -- |
 -- | Why do you need to "propose"? Because the update could conflict with other
 -- | values.
 -- |
--- | Uses propagateUpChildType to move up the zipper and constrainType to move down.
-propose :: LangSyntax -> LangZipper -> LangZipper
-propose syntax z =
+-- | Uses propagateUpChildType to move up the zipper.
+proposeNew :: LangSyntax -> LangZipper -> LangZipper
+proposeNew syntax z =
   let inferredTy = infer syntax
       oldTy = infer z.syntax
 
       -- as long as the type changes, keep marching up.
       -- TODO I'm not sure this check is even necessary
-      propagatedUp = traceAnyId $ if oldTy == inferredTy
+      propagatedUp = if oldTy == inferredTy
         then z {syntax = syntax}
         -- okay, we have differing types:
         -- * try to push this type up the tree with `propagateUpChildType`
@@ -182,7 +215,7 @@ propose syntax z =
           Just {zipper: z', prevLoc} ->
             let syntax' = propagateUpChildType
                   z'.syntax
-                  {ix: prevLoc, newTm: syntax, newTy: inferredTy}
+                  {ix: prevLoc, newChildTm: syntax, newChildTy: inferredTy}
             in case syntax' of
                  c@(Conflict _) ->
                    z' { syntax = c
@@ -190,20 +223,22 @@ propose syntax z =
                       , anchor = PathCons 0 (PathOffset 0)
                       , focus = PathCons 0 (PathOffset 0)
                       }
-                 syntax' -> propose syntax' z'
+                 syntax' -> proposeNew syntax' z'
           -- reached the top, fill it in
           Nothing -> z {syntax = syntax}
 
-      -- now march down to update the children
-      finalSyntax = traceAnyId $ propagateDownChildTypes
-        { tm: propagatedUp.syntax
-        -- XXX I *don't* think this is right
-        , ty: inferredTy
-        }
-      propagatedDown = z {syntax = finalSyntax}
-
      -- make sure to zoom in once we've finished resolving changes
-  in zoomIn' propagatedUp -- propagatedDown
+  in zoomIn' propagatedUp
+
+updateTypeOf :: LangZipper -> LangSyntax -> LangZipper
+updateTypeOf z ty =
+      -- now march down to update the children
+  let syntax = propagateDownChildTypes
+        { tm: z.syntax
+        -- XXX I *don't* think this is right
+        , ty
+        }
+  in traceAny (Tuple z.syntax ty) \_ -> z {syntax = syntax}
 
 operateOffsetsInNode :: LangZipper -> Action -> Int -> Int -> Either String LangZipper
 operateOffsetsInNode zipper action start end = case Tuple zipper.syntax action of
@@ -247,7 +282,7 @@ operateAtomic z@{syntax: Hole name, past, anchor: PathOffset o} (Typing char)
       case I.fromString (String.singleton char) of
         Just n -> Right $
           let z' = z {anchor = z.anchor .+ 1, focus = z.anchor .+ 1}
-          in propose (Leaf (IntLeaf n)) z'
+          in proposeNew (Leaf (IntLeaf n)) z'
         Nothing -> throwUserMessage "inconsistency: unable to parse after inserting single digit"
   | otherwise = Right
       { syntax: Hole (spliceStr name o 0 (String.singleton char))

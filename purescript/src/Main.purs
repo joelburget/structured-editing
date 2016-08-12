@@ -22,8 +22,8 @@ import Data.Generic (class Generic)
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
-import Path (Path, PathStep, subPath, getOffset)
-import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, followPath, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
+import Path (CursorPath, PathStep, subPath, getOffset)
+import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Generic (myOptions)
 import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
 import Operate (suggestCoherentSelection, SelectionSuggestions(..))
@@ -130,10 +130,11 @@ blockFromContent inlines =
 -- contentFromSyntax :: forall a b. Show b
 --                   => (Syntax a b)
 contentFromSyntax :: LangSyntax
-                  -> Maybe Path
-                  -> Maybe Path
+                  -- TODO change the Nothing case to CursorOutOfScope?
+                  -> Maybe CursorPath
+                  -> Maybe CursorPath
                   -> State Int {inlines :: Array LightInline, ids :: Map Int (Array PathStep)}
-contentFromSyntax (Conflict {term, expectedTy, actualTy}) anchor focus = do
+contentFromSyntax (Conflict {term, insideTy, outsideTy}) anchor focus = do
   {inlines, ids} <- contentFromSyntax term (subPath 0 anchor) (subPath 0 focus)
   let inlines' = map (\li -> li { ty = InlineConflict }) inlines
   pure {inlines: inlines', ids}
@@ -179,7 +180,7 @@ contentFromSyntax syntax anchor focus = do
     Conflict _ -> unsafeThrow "invariant violation: contentFromSyntax (Conflict _)"
 
 
--- type RawSelection = { anchor :: Path, focus :: Path }
+-- TODO get anchor/focus vs start/end right
 type RawSelection =
   { anchorKey :: String
   , anchorOffset :: Int
@@ -277,6 +278,7 @@ operate :: Fn2 LangZipper Foreign (Either String LangZipper)
 operate = mkFn2 \zipper foreignAction -> do
   action <- lmap show (read foreignAction)
   Operate.operate zipper action
+
 
 -- wrap this record so we can read it in `setEndpoints`
 newtype WrappedAnchorFocus = WrappedAnchorFocus {anchor :: Int, focus :: Int}

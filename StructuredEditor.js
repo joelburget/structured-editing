@@ -23,6 +23,7 @@ import {
   listAllHoles,
   listAllConflicts,
   operate,
+  operateAt,
   genContentState,
   genDisplayContentState,
   initSelectSyntax,
@@ -118,6 +119,7 @@ export class StructuredEditor extends React.Component {
     this.handleKeyCommand = command => this._handleKeyCommand(command);
     this.handleBeforeInput = chars => this._handleBeforeInput(chars);
     this.handleRawChange = editorState => this._handleRawChange(editorState);
+    this.handleResolve = (loc, command) => this._handleResolve(loc, command);
     this.focus = () => this.editor.focus();
   }
 
@@ -143,6 +145,10 @@ export class StructuredEditor extends React.Component {
       default:
         return false;
     }
+  }
+
+  _handleResolve(loc, tag: string) {
+    this.props.onChange({tag, loc});
   }
 
   // "executed by the Editor when edits and selection changes occur". Lacking
@@ -195,12 +201,14 @@ export class StructuredEditor extends React.Component {
         <li>
           <ul style={styles.conflictList}>
             <li style={styles.conflictItem}>
-              <div>expected:</div>
-              <div><AdditionDisplay opaqueSyntax={conflictInfo.expectedTy} /></div>
+              <button onClick={() => this.handleResolve(loc, 'take-outside')}>take</button>
+              <div>outside:</div>
+              <div><AdditionDisplay opaqueSyntax={conflictInfo.outsideTy} /></div>
             </li>
             <li style={styles.conflictItem}>
-              <div>actual:</div>
-              <div><AdditionDisplay opaqueSyntax={conflictInfo.actualTy} /></div>
+              <button onClick={() => this.handleResolve(loc, 'take-inside')}>take</button>
+              <div>inside:</div>
+              <div><AdditionDisplay opaqueSyntax={conflictInfo.insideTy} /></div>
             </li>
           </ul>
         </li>

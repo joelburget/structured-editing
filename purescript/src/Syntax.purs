@@ -20,8 +20,9 @@ import Data.List (List, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (length)
 import Partial.Unsafe (unsafePartial)
-import Path (Path(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
+import Path (CursorPath(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
 
+import Debug.Trace
 
 throwE :: forall e m a. Applicative m => e -> ExceptT e m a
 throwE = ExceptT <<< pure <<< Left
@@ -43,7 +44,7 @@ class Lang internal leaf where
 
   propagateUpChildType
     :: Syntax internal leaf
-    -> {ix :: Int, newTm :: Syntax internal leaf, newTy :: Syntax internal leaf}
+    -> {ix :: Int, newChildTm :: Syntax internal leaf, newChildTy :: Syntax internal leaf}
     -> Syntax internal leaf
 
   propagateDownChildTypes
@@ -54,8 +55,8 @@ class Lang internal leaf where
 
 type ConflictInfo internal leaf =
   { term :: Syntax internal leaf
-  , expectedTy :: Syntax internal leaf
-  , actualTy :: Syntax internal leaf
+  , outsideTy :: Syntax internal leaf
+  , insideTy :: Syntax internal leaf
   }
 
 -- TODO decide whether some of these cases should be merged. Fundamentally this
@@ -70,8 +71,8 @@ data Syntax internal leaf
     -- weirdly this has to be inlined for generic deriving even though it's
     -- really just ConflictInfo
     { term :: Syntax internal leaf
-    , expectedTy :: Syntax internal leaf
-    , actualTy :: Syntax internal leaf
+    , outsideTy :: Syntax internal leaf
+    , insideTy :: Syntax internal leaf
     }
 
 derive instance genericSyntax :: (Generic a, Generic b) => Generic (Syntax a b)
@@ -88,9 +89,9 @@ instance syntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Syntax a b)
       "hole" -> Hole <$> readProp "value" obj
       "conflict" -> do
         term <-readProp "term" obj
-        expectedTy <- readProp "expectedTy" obj
-        actualTy <- readProp "actualTy" obj
-        pure (Conflict {term, expectedTy, actualTy})
+        outsideTy <- readProp "outsideTy" obj
+        insideTy <- readProp "insideTy" obj
+        pure (Conflict {term, outsideTy, insideTy})
       _ -> Left (JSONError "found unexpected value in syntaxIsForeign")
 
 syntaxHoles :: forall a b. Syntax a b -> Array (Syntax a b)
@@ -103,9 +104,15 @@ syntaxConflicts
   :: forall a b. Syntax a b
   -> Array {conflictInfo :: ConflictInfo a b, loc :: Array PathStep}
 syntaxConflicts (Internal _ children) =
-  let conflicts = children >>= syntaxConflicts
-  in mapWithIndex (\i {conflictInfo, loc} -> {conflictInfo, loc: i Array.: loc})
-                  conflicts
+  let conflictsPerChild = map syntaxConflicts children
+      childIndexedConflicts = mapWithIndex
+        (\i childConflicts -> map
+          (\{conflictInfo, loc} -> {conflictInfo, loc: i Array.: loc})
+          childConflicts
+        )
+        conflictsPerChild
+  in join childIndexedConflicts
+
 syntaxConflicts (Leaf _) = []
 syntaxConflicts (Hole _) = []
 syntaxConflicts (Conflict conflictInfo) = [{conflictInfo, loc: []}]
@@ -115,8 +122,8 @@ type SyntaxZipper a b =
   -- TODO past becomes a bad name as we (maybe) generalize this zipper to undo
   -- / redo as well.
   , past :: Past a b
-  , anchor :: Path
-  , focus :: Path
+  , anchor :: CursorPath
+  , focus :: CursorPath
   }
 
 newtype ZoomedSZ a b = ZoomedSZ (SyntaxZipper a b)
@@ -142,24 +149,34 @@ type Past a b = List (ZipperStep a b)
 makeZipper :: forall a b. Syntax a b -> SyntaxZipper a b
 makeZipper syntax = {syntax, past: List.Nil, anchor: PathOffset 0, focus: PathOffset 0}
 
-followPath :: forall a b. Syntax a b -> Path -> Syntax a b
-followPath syntax path = case syntax of
-  Leaf _ -> syntax
-  Hole _ -> syntax
-  Conflict _ -> case path of
-    PathCons dir tail -> followPath (_.value (conflictIx dir syntax)) tail
-    PathOffset _ -> syntax
-  Internal value children -> case path of
-    PathCons dir tail -> followPath (unsafePartial (unsafeIndex children dir)) tail
-    PathOffset _ -> syntax
+moveTo :: forall a b. SyntaxZipper a b -> Array PathStep -> SyntaxZipper a b
+moveTo z steps = case Array.uncons steps of
+  Just {head, tail} ->
+    let subZ = case down head z of
+          Just z' -> z'
+          Nothing -> unsafeThrow "invariant violation: moveTo couldn't move down"
+    in moveTo subZ tail
+  Nothing -> z
+
+getStepsFromRoot :: forall a b. Past a b -> Array PathStep
+getStepsFromRoot = Array.reverse <<< Array.fromFoldable <<< map _.dir
+
+type Bookmark =
+  { anchor :: CursorPath
+  , focus :: CursorPath
+  , zoom :: Array PathStep
+  }
+
+bookmark :: forall a b. SyntaxZipper a b -> Bookmark
+bookmark z@{anchor, focus, past} = {anchor, focus, zoom: getStepsFromRoot past}
 
 conflictIx :: forall a b. Int
            -> Syntax a b
            -> {value :: Syntax a b, otherChildren :: Array (Syntax a b)}
-conflictIx i (Conflict {term, expectedTy, actualTy}) = case i of
-  0 -> {value: term, otherChildren: [expectedTy, actualTy]}
-  1 -> {value: expectedTy, otherChildren: [term, actualTy]}
-  2 -> {value: actualTy, otherChildren: [term, expectedTy]}
+conflictIx i (Conflict {term, outsideTy, insideTy}) = case i of
+  0 -> {value: term, otherChildren: [outsideTy, insideTy]}
+  1 -> {value: outsideTy, otherChildren: [term, insideTy]}
+  2 -> {value: insideTy, otherChildren: [term, outsideTy]}
   n -> unsafeThrow $ "unexpected index into Conflict: " <> show n
 conflictIx _ tm = unsafeThrow "unexpected conflictIx"
 
@@ -167,7 +184,7 @@ zoomIn :: forall a b. SyntaxZipper a b -> ZoomedSZ a b
 zoomIn zipper@{syntax, past, anchor, focus} = case syntax of
   Leaf _ -> ZoomedSZ zipper
   Hole _ -> ZoomedSZ zipper
-  Conflict {term, expectedTy, actualTy} ->
+  Conflict {term, outsideTy, insideTy} ->
     if pathHead anchor == pathHead focus
     then
       let go = do
@@ -218,7 +235,8 @@ getPast {past} = past
 zipUp :: forall a b. SyntaxZipper a b -> SyntaxZipper a b
 zipUp tz = maybe tz zipUp (_.zipper <$> up tz)
 
-up :: forall a b. SyntaxZipper a b -> Maybe {zipper :: SyntaxZipper a b, prevLoc :: PathStep}
+up :: forall a b. SyntaxZipper a b
+   -> Maybe {zipper :: SyntaxZipper a b, prevLoc :: PathStep}
 up {syntax, past, anchor, focus} = do
   {head: {dir, otherChildren, value}, tail} <- List.uncons past
   -- graft the other side back on, track the size we're adding on the left so
@@ -227,7 +245,7 @@ up {syntax, past, anchor, focus} = do
       newSyntax = case value of
         InternalValue value' -> Internal value' children
         ConflictValue -> case children of
-          [term, expectedTy, actualTy] -> Conflict {term, expectedTy, actualTy}
+          [term, outsideTy, insideTy] -> Conflict {term, outsideTy, insideTy}
           _ -> unsafeThrow "deeply broken up"
   let zipper =
         { syntax: newSyntax
@@ -237,38 +255,44 @@ up {syntax, past, anchor, focus} = do
         }
   pure {zipper, prevLoc: dir}
 
-type ZipperSelection a b r = {anchor :: Path, focus :: Path | r}
+type ZipperSelection a b r = {anchor :: CursorPath, focus :: CursorPath | r}
 
-tryZoomSelection :: forall a b c. ZipperSelection a b c
-                 -> PathStep
-                 -> Maybe (ZipperSelection a b ())
-tryZoomSelection {anchor: PathCons a anchor, focus: PathCons f focus} step =
-  if a == step && f == step then Just {anchor, focus} else Nothing
-tryZoomSelection _ _  = Nothing
+zoomSelection
+  :: forall a b c. ZipperSelection a b c
+  -> PathStep
+  -> ZipperSelection a b ()
+zoomSelection {anchor, focus} step =
+  let anchor'' = case anchor of
+        PathCons a anchor' -> if a == step then anchor' else CursorOutOfScope
+        _ -> CursorOutOfScope
+      focus'' = case focus of
+        PathCons a focus' -> if a == step then focus' else CursorOutOfScope
+        _ -> CursorOutOfScope
+   in {anchor: anchor'', focus: focus''}
 
 -- XXX get the anchor and focus right
 down :: forall a b. PathStep -> SyntaxZipper a b -> Maybe (SyntaxZipper a b)
 down dir zipper@{syntax, past} = case syntax of
   Internal value children -> do
     let otherChildren = spliceArr children dir 1 []
-    {anchor, focus} <- tryZoomSelection zipper dir
+        zoomed = zoomSelection zipper dir
     pure
       -- XXX unsafe
       { syntax: unsafePartial (unsafeIndex children dir)
       , past: {dir, otherChildren, value: InternalValue value} : past
-      , anchor
-      , focus
+      , anchor: zoomed.anchor
+      , focus: zoomed.focus
       }
-  _ -> Nothing
+  x -> Nothing
 
 editFocus :: forall a b. (Syntax a b -> Syntax a b) -> SyntaxZipper a b -> SyntaxZipper a b
 editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 
-makePath :: forall a b. Lang a b => Syntax a b -> Int -> Either String Path
+makePath :: forall a b. Lang a b => Syntax a b -> Int -> Either String CursorPath
 makePath syntax n =
   let z = (runExceptT (consumePath syntax))
-      y :: Tuple (Either (Either String Path) Unit) Int
+      y :: Tuple (Either (Either String CursorPath) Unit) Int
       y = runState z n
   in case y of
        Tuple (Left x) _ -> x
@@ -282,7 +306,7 @@ newtype ConsumedInPreviousChunks = ConsumedInPreviousChunks Int
 -- consumed
 consumePath :: forall a b. Lang a b -- Show b
             => Syntax a b
-            -> ExceptT (Either String Path) (State Int) Unit
+            -> ExceptT (Either String CursorPath) (State Int) Unit
 consumePath l@(Leaf _) = do
   let str = getLeafTemplate l
   offset <- get
@@ -309,7 +333,7 @@ consumePath i@(Internal _ children) = do
   -- except to give back result
   -- TODO I must be doing something wrong to have to do all this lifting...
   let yieldsPiece :: StateT ConsumedInPreviousChunks
-                     (ExceptT (Either String Path)
+                     (ExceptT (Either String CursorPath)
                      (State Int))
                      Unit
       yieldsPiece = forM_ arr \child -> case child of

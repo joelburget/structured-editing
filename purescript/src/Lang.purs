@@ -12,7 +12,7 @@ import Data.Tuple
 import Syntax
 import Template
 import Path
-import Util (spliceArr)
+import Util
 
 
 data IntBoolLang = IntBoolLang
@@ -142,6 +142,7 @@ unsafeUpdateChild {term, child} i = case term of
 
 
 -- | Try to unify both of these
+-- TODO should we return Conflict instead of Nothing?
 unify :: LangSyntax -> LangSyntax -> Maybe LangSyntax
 
 -- leaves are easy
@@ -199,12 +200,16 @@ unify (Conflict _) _ = Nothing
 unify _ _ = Nothing
 
 -- | This node's child changed types -- update accordingly.
+-- |
+-- | There's some subtlety here -- the child node knows what type it needs to
+-- | be, so our job is to use any other information we have -- eg from other
+-- | child nodes to either accept or conflict that child.
 propagateUpChildType
   :: LangSyntax
-  -> {ix :: Int, newTm :: LangSyntax, newTy :: LangSyntax}
+  -> {ix :: Int, newChildTm :: LangSyntax, newChildTy :: LangSyntax}
   -> LangSyntax
-propagateUpChildType term {ix, newTm, newTy} =
-  let expectedTy = case term of
+propagateUpChildType term {ix, newChildTm, newChildTy} =
+  let inferredChildTy = case term of
         Internal IfThenElse [c, l, r] -> case ix of
           0 -> bool
           1 -> infer r
@@ -226,11 +231,12 @@ propagateUpChildType term {ix, newTm, newTy} =
         Internal Annot _ -> unsafeThrow "invariant violation: propagateUpChildType (Internal Annot _)"
         Leaf _ -> unsafeThrow "deeply broken propagateUpChildType (Leaf _)"
         Hole _ -> unsafeThrow "deeply broken propagateUpChildType (Hole _)"
-        Conflict {expectedTy} -> expectedTy
-      -- TODO pull out extra information!
-      child = case unify newTy expectedTy of
-        Just _ -> newTm
-        _ -> Conflict {term: newTm, expectedTy, actualTy: newTy}
+        Conflict {outsideTy} -> outsideTy
+      -- TODO pull out extra information! (unification produces kind of an
+      -- information delta, rather than just a boolean)
+      child = case unify newChildTy inferredChildTy of
+        Just _ -> newChildTm
+        _ -> Conflict {term: newChildTm, insideTy: newChildTy, outsideTy: inferredChildTy}
   in case term of
        -- replace it with the conflict or non-conflict we found
        Conflict _ -> child
@@ -238,6 +244,7 @@ propagateUpChildType term {ix, newTm, newTy} =
 
 
 -- XXX probably need to check that tm and ty match first
+-- | Propagate type information we can use from this type down to the children.
 propagateDownChildTypes
   :: {tm :: LangSyntax, ty :: LangSyntax}
   -> LangSyntax
@@ -261,10 +268,10 @@ propagateDownChildTypes {tm: Internal Annot [subTm, subTy], ty}
 propagateDownChildTypes {tm: Internal _ _, ty}
   = unsafeThrow "invariant violation: propagateDownChildTypes Internal _ _"
 propagateDownChildTypes {tm: tm@(Leaf _), ty} = tm
-propagateDownChildTypes {tm: Conflict {term, actualTy}, ty} =
-  if isJust $ unify actualTy ty
+propagateDownChildTypes {tm: Conflict {term, insideTy}, ty} =
+  if isJust $ traceAnyId $ unify insideTy ty
   then term
-  else Conflict {term, expectedTy: ty, actualTy}
+  else Conflict {term, outsideTy: ty, insideTy}
 propagateDownChildTypes {tm: tm@(Hole _), ty} = Internal Annot [tm, ty]
 
 
