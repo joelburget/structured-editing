@@ -101,12 +101,12 @@ syntaxHoles (Conflict {term}) = syntaxHoles term
 
 syntaxConflicts
   :: forall a b. Syntax a b
-  -> Array {conflictInfo :: ConflictInfo a b, loc :: Array PathStep}
+  -> Array {conflict :: Syntax a b, loc :: Array PathStep}
 syntaxConflicts (Internal _ children) =
   let conflictsPerChild = map syntaxConflicts children
       childIndexedConflicts = mapWithIndex
         (\i childConflicts -> map
-          (\{conflictInfo, loc} -> {conflictInfo, loc: i Array.: loc})
+          (\{conflict, loc} -> {conflict, loc: i Array.: loc})
           childConflicts
         )
         conflictsPerChild
@@ -114,7 +114,7 @@ syntaxConflicts (Internal _ children) =
 
 syntaxConflicts (Leaf _) = []
 syntaxConflicts (Hole _) = []
-syntaxConflicts (Conflict conflictInfo) = [{conflictInfo, loc: []}]
+syntaxConflicts conflict@(Conflict _) = [{conflict, loc: []}]
 
 type SyntaxZipper a b =
   { syntax :: Syntax a b

@@ -197,22 +197,28 @@ export class StructuredEditor extends React.Component {
       .map(hole => <li><AdditionDisplay opaqueSyntax={hole} /></li>);
 
     const conflicts = listAllConflicts(this.props.opaqueSyntax)
-      .map(({conflictInfo, loc}) => (
-        <li>
-          <ul style={styles.conflictList}>
-            <li style={styles.conflictItem}>
-              <button onClick={() => this.handleResolve(loc, 'take-outside')}>take</button>
-              <div>outside:</div>
-              <div><AdditionDisplay opaqueSyntax={conflictInfo.outsideTy} /></div>
-            </li>
-            <li style={styles.conflictItem}>
-              <button onClick={() => this.handleResolve(loc, 'take-inside')}>take</button>
-              <div>inside:</div>
-              <div><AdditionDisplay opaqueSyntax={conflictInfo.insideTy} /></div>
-            </li>
-          </ul>
-        </li>
-      ));
+      .map(({conflict, loc}) => {
+        const {outsideTy, insideTy} = conflict.value0;
+        return (
+          <li>
+            <ul style={styles.conflictList}>
+              <li>
+                <AdditionDisplay opaqueSyntax={conflict} />
+              </li>
+              <li style={styles.conflictItem}>
+                <button onClick={() => this.handleResolve(loc, 'take-outside')}>take</button>
+                <div>outside:</div>
+                <div><AdditionDisplay opaqueSyntax={outsideTy} /></div>
+              </li>
+              <li style={styles.conflictItem}>
+                <button onClick={() => this.handleResolve(loc, 'take-inside')}>take</button>
+                <div>inside:</div>
+                <div><AdditionDisplay opaqueSyntax={insideTy} /></div>
+              </li>
+            </ul>
+          </li>
+        );
+      });
 
     const {evaluated, selectionSuggestions} =
       selectionInfo(this.props.opaqueSyntax);

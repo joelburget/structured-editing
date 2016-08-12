@@ -305,12 +305,12 @@ listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
 
 listAllConflicts :: Fn1
   LangZipper
-  (Array {conflictInfo :: LangConflictInfo, loc :: Array PathStep})
+  (Array {conflict :: LangSyntax, loc :: Array PathStep})
 listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxConflicts)
 
 listLocalConflicts :: Fn1
   LangZipper
-  (Array {conflictInfo :: LangConflictInfo, loc :: Array PathStep})
+  (Array {conflict :: LangSyntax, loc :: Array PathStep})
 listLocalConflicts = mkFn1 (_.syntax >>> syntaxConflicts)
 
 suggestionsToForeign :: SelectionSuggestions -> Foreign
