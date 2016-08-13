@@ -20,7 +20,7 @@ import Data.List (List, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (length)
 import Partial.Unsafe (unsafePartial)
-import Path (NodePath, CursorPath(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
+import Path (NodePath, CursorPath(..), PathStep, pathHead, pathUncons)
 
 
 throwE :: forall e m a. Applicative m => e -> ExceptT e m a

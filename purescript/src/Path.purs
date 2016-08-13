@@ -65,9 +65,3 @@ pathOffsetNum (PathOffset i) j = PathOffset (i + j)
 pathOffsetNum (PathCons step rest) j = PathCons step (pathOffsetNum rest j)
 
 infix 4 pathOffsetNum as .+
-
-data ConstraintStep
-  = StepTy
-  | StepChild PathStep
-
-type ConstraintPath = Array ConstraintStep
