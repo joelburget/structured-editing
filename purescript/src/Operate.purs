@@ -31,6 +31,7 @@ data Action
   | Typing Char
   | TakeInside (Array PathStep)
   | TakeOutside (Array PathStep)
+  | Tab { shift :: Boolean }
 
 derive instance genericAction :: Generic Action
 instance showAction :: Show Action where show = gShow
@@ -48,6 +49,9 @@ instance actionIsForeign :: IsForeign Action where
       "backspace" -> pure Backspace
       "take-outside" -> TakeOutside <$> readProp "loc" obj
       "take-inside" -> TakeInside <$> readProp "loc" obj
+      "tab" -> do
+        shift <- readProp "shift" obj
+        pure $ Tab {shift}
       _ -> Left (JSONError "found unexpected value in actionIsForeign")
 
 leafKeywords :: Map String LangSyntax
@@ -140,6 +144,7 @@ suggestCoherentSelection zipper =
             Tuple (PathCons _ _) (PathCons _ _) -> MoveBoth
             Tuple _ _ -> NoSuggestion
 
+-- TODO does this actually use the Left option?
 resolveConflictAt :: LangZipper -> Action -> Either String LangZipper
 resolveConflictAt z action =
   let bmark = bookmark z
@@ -171,11 +176,23 @@ updateTypeOf z outsideTy =
         }
   in z {syntax = syntax}
 
+-- | Two easy cases:
+-- | * we've selected the entirety of a hole / conflict -- just navigate to the
+-- |   next.
+-- | * the cursor is between hole / conflict -- navigate to the next
+-- |
+-- | Harder cases:
+-- | * cursor within a hole -- select the whole thing?
+-- | * selection not exactly aligned with a hole -- ?
+tabNavigate :: LangZipper -> Action -> Either String LangZipper
+tabNavigate zipper action = Left "tabbing not yet implemented!"
+
 -- TODO this should be part of the language definition
 operate :: LangZipper -> Action -> Either String LangZipper
 operate zipper@{syntax, anchor, focus} action = case action of
   (TakeOutside _) -> resolveConflictAt zipper action
   (TakeInside _) -> resolveConflictAt zipper action
+  (Tab _) -> tabNavigate zipper action
   _ -> if anchor == focus
     then operateAtomic zipper action
 

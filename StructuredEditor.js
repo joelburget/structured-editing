@@ -105,7 +105,7 @@ function specialKeyBindings(e: SyntheticKeyboardEvent): string {
   if (!hasCommandModifier(e)) {
     if (e.key === 'Backspace') {
       return 'structurededitor-backspace';
-    }
+    } // else if (e.key === 'Tab'
   }
 
   return getDefaultKeyBinding(e);
@@ -118,6 +118,7 @@ export class StructuredEditor extends React.Component {
 
     this.handleKeyCommand = command => this._handleKeyCommand(command);
     this.handleBeforeInput = chars => this._handleBeforeInput(chars);
+    this.handleTab = e => this._handleTab(e);
     this.handleRawChange = editorState => this._handleRawChange(editorState);
     this.handleResolve = (loc, command) => this._handleResolve(loc, command);
     this.focus = () => this.editor.focus();
@@ -129,6 +130,13 @@ export class StructuredEditor extends React.Component {
       value: chars,
     });
     return true;
+  }
+
+  _handleTab(e) {
+    if (e.type === 'keydown' && e.key === 'Tab') {
+      this.props.onChange({tag: 'tab', shift: e.shiftKey});
+      e.preventDefault();
+    }
   }
 
   _handleKeyCommand(command: string): boolean {
@@ -193,9 +201,18 @@ export class StructuredEditor extends React.Component {
     // want to click elsewhere. only if the editor has focus.
     editorState = EditorState.forceSelection(editorState, selectionState);
 
-    const holes = listAllHoles(this.props.opaqueSyntax)
-      .map(hole => <li><AdditionDisplay opaqueSyntax={hole} /></li>);
+    const holeCount = listAllHoles(this.props.opaqueSyntax).length;
+    const conflictCount = listAllConflicts(this.props.opaqueSyntax).length;
 
+    const holeCountStr = holeCount === 1
+      ? `${holeCount} hole`
+      : `${holeCount} holes`;
+
+    const conflictCountStr = conflictCount === 1
+      ? `${conflictCount} conflict`
+      : `${conflictCount} conflicts`;
+
+    /*
     const conflicts = listAllConflicts(this.props.opaqueSyntax)
       .map(({conflict, loc}) => {
         const {outsideTy, insideTy} = conflict.value0;
@@ -219,6 +236,7 @@ export class StructuredEditor extends React.Component {
           </li>
         );
       });
+   */
 
     const {evaluated, selectionSuggestions} =
       selectionInfo(this.props.opaqueSyntax);
@@ -236,6 +254,7 @@ export class StructuredEditor extends React.Component {
             editorState={editorState}
             handleKeyCommand={this.handleKeyCommand}
             handleBeforeInput={this.handleBeforeInput}
+            onTab={this.handleTab}
             keyBindingFn={specialKeyBindings}
             onChange={this.handleRawChange}
           />
@@ -243,15 +262,8 @@ export class StructuredEditor extends React.Component {
         <div style={styles.info}>
           <h3>info</h3>
           {suggestion}
-          <div>evaluated: <AdditionDisplay opaqueSyntax={evaluated} /></div>
-          <h3>conflicts</h3>
-          <ul style={styles.conflictList}>
-            {conflicts}
-          </ul>
-          <h3>holes</h3>
-          <ul style={styles.conflictList}>
-            {holes}
-          </ul>
+          <div>evaluated selection: <AdditionDisplay opaqueSyntax={evaluated} /></div>
+          <p>{holeCountStr}, {conflictCountStr}</p>
         </div>
       </div>
     );
