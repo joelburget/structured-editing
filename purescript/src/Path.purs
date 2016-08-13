@@ -32,20 +32,19 @@ pathsDifferOnlyInOffset (PathCons d1 rest1) (PathCons d2 rest2) =
 pathsDifferOnlyInOffset (PathOffset off1) (PathOffset off2) = Just {off1, off2}
 pathsDifferOnlyInOffset _ _ = Nothing
 
-getOffset :: Maybe CursorPath -> Maybe Int
+getOffset :: CursorPath -> Maybe Int
 getOffset path = case path of
-  Just (PathOffset n) -> Just n
+  PathOffset n -> Just n
   _ -> Nothing
 
-subPath :: PathStep -> Maybe CursorPath -> Maybe CursorPath
+subPath :: PathStep -> CursorPath -> CursorPath
 subPath step path = case path of
-  Nothing -> Nothing
-  Just CursorOutOfScope -> Nothing
-  Just (PathOffset _) -> Nothing
-  Just (PathCons step' rest) ->
+  CursorOutOfScope -> CursorOutOfScope
+  (PathOffset _) -> CursorOutOfScope
+  (PathCons step' rest) ->
     if step == step'
-       then Just rest
-       else Nothing
+    then rest
+    else CursorOutOfScope
 
 pathHead :: CursorPath -> Maybe PathStep
 pathHead (PathCons step _) = Just step

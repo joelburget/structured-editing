@@ -19,7 +19,7 @@ import Data.Generic (class Generic)
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
-import Path (NodePath, CursorPath, PathStep, subPath, getOffset)
+import Path (NodePath, CursorPath(..), PathStep, subPath, getOffset)
 import Syntax (ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath)
 import Generic (myOptions)
 import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
@@ -36,15 +36,16 @@ genContentState :: Fn1 LangZipper Foreign
 genContentState = mkFn1 \zipper ->
   let top = zipUp zipper
   -- TODO why the Justs?
-  in genHelper top.syntax (Just top.anchor) (Just top.focus)
+  in genHelper top.syntax top.anchor top.focus
 
 genDisplayContentState :: Fn1 LangSyntax Foreign
-genDisplayContentState = mkFn1 \syntax -> genHelper syntax Nothing Nothing
+genDisplayContentState = mkFn1 \syntax ->
+  genHelper syntax CursorOutOfScope CursorOutOfScope
 
 -- Just a helper for `genContentState` / `genDisplayContentState`
-genHelper :: LangSyntax -> Maybe CursorPath -> Maybe CursorPath -> Foreign
+genHelper :: LangSyntax -> CursorPath -> CursorPath -> Foreign
 genHelper syntax anchor focus =
-  let yieldsContent = contentFromSyntax syntax Nothing Nothing
+  let yieldsContent = contentFromSyntax syntax anchor focus
       contentAndKeymapping = evalState yieldsContent 0
       contentState = blockFromContent (contentAndKeymapping.inlines)
   in toForeign contentState

@@ -149,8 +149,8 @@ contentFromSyntax
   :: forall a b. (Lang a b)
   => (Syntax a b)
   -- TODO change the Nothing case to CursorOutOfScope?
-  -> Maybe CursorPath
-  -> Maybe CursorPath
+  -> CursorPath
+  -> CursorPath
   -> State Int {inlines :: Array DraftInline, ids :: Map Int NodePath}
 contentFromSyntax (Conflict {term, insideTy, outsideTy}) anchor focus = do
   {inlines, ids} <- contentFromSyntax term (subPath 0 anchor) (subPath 0 focus)
