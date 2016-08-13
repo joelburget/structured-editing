@@ -283,7 +283,7 @@ propagateDownType {term, outsideTy} = case term of
 
 
 instance intBoolIsLang :: Lang Internal Leaf where
-  getLeafTemplate l = case l of
+  getLeafTemplate = case _ of
     Leaf (BoolLeaf b) -> show b
     Leaf (IntLeaf i) -> show i
     Leaf IntTy -> "int"
@@ -291,7 +291,7 @@ instance intBoolIsLang :: Lang Internal Leaf where
     Leaf TyTy -> "type"
     _ -> unsafeThrow "inconsistency: couldn't get leaf template"
 
-  getInternalTemplate i = case i of
+  getInternalTemplate = case _ of
     Internal tag _ -> mkTemplate $ case tag of
       IfThenElse -> "if {} then {} else {}"
       Addition -> "{} + {}"
