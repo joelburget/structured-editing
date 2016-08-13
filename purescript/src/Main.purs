@@ -35,14 +35,15 @@ initSelectSyntax = mkFn1 \foreignSelectSyntax -> do
 genContentState :: Fn1 LangZipper Foreign
 genContentState = mkFn1 \zipper ->
   let top = zipUp zipper
-      -- TODO why the Justs?
-      yieldsContent = contentFromSyntax top.syntax (Just top.anchor) (Just top.focus)
-      contentAndKeymapping = evalState yieldsContent 0
-      contentState = blockFromContent (contentAndKeymapping.inlines)
-  in toForeign contentState
+  -- TODO why the Justs?
+  in genHelper top.syntax (Just top.anchor) (Just top.focus)
 
 genDisplayContentState :: Fn1 LangSyntax Foreign
-genDisplayContentState = mkFn1 \syntax ->
+genDisplayContentState = mkFn1 \syntax -> genHelper syntax Nothing Nothing
+
+-- Just a helper for `genContentState` / `genDisplayContentState`
+genHelper :: LangSyntax -> Maybe CursorPath -> Maybe CursorPath -> Foreign
+genHelper syntax anchor focus =
   let yieldsContent = contentFromSyntax syntax Nothing Nothing
       contentAndKeymapping = evalState yieldsContent 0
       contentState = blockFromContent (contentAndKeymapping.inlines)
