@@ -20,7 +20,7 @@ import Data.List (List, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (length)
 import Partial.Unsafe (unsafePartial)
-import Path (CursorPath(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
+import Path (NodePath, CursorPath(..), PathStep, ConstraintStep(..), ConstraintPath, pathHead, pathUncons)
 
 
 throwE :: forall e m a. Applicative m => e -> ExceptT e m a
@@ -101,7 +101,7 @@ syntaxHoles (Conflict {term}) = syntaxHoles term
 
 syntaxConflicts
   :: forall a b. Syntax a b
-  -> Array {conflict :: Syntax a b, loc :: Array PathStep}
+  -> Array {conflict :: Syntax a b, loc :: NodePath}
 syntaxConflicts (Internal _ children) =
   let conflictsPerChild = map syntaxConflicts children
       childIndexedConflicts = mapWithIndex
@@ -148,7 +148,7 @@ type Past a b = List (ZipperStep a b)
 makeZipper :: forall a b. Syntax a b -> SyntaxZipper a b
 makeZipper syntax = {syntax, past: List.Nil, anchor: PathOffset 0, focus: PathOffset 0}
 
-moveTo :: forall a b. SyntaxZipper a b -> Array PathStep -> SyntaxZipper a b
+moveTo :: forall a b. SyntaxZipper a b -> NodePath -> SyntaxZipper a b
 moveTo z steps = case Array.uncons steps of
   Just {head, tail} ->
     let subZ = case down head z of
@@ -158,13 +158,13 @@ moveTo z steps = case Array.uncons steps of
     in moveTo subZ tail
   Nothing -> z
 
-getStepsFromRoot :: forall a b. Past a b -> Array PathStep
+getStepsFromRoot :: forall a b. Past a b -> NodePath
 getStepsFromRoot = Array.reverse <<< Array.fromFoldable <<< map _.dir
 
 type Bookmark =
   { anchor :: CursorPath
   , focus :: CursorPath
-  , zoom :: Array PathStep
+  , zoom :: NodePath
   }
 
 bookmark :: forall a b. SyntaxZipper a b -> Bookmark

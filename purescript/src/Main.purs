@@ -19,7 +19,7 @@ import Data.Generic (class Generic)
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
-import Path (CursorPath, PathStep, subPath, getOffset)
+import Path (NodePath, CursorPath, PathStep, subPath, getOffset)
 import Syntax (ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath)
 import Generic (myOptions)
 import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
@@ -80,12 +80,12 @@ listAllHoles = mkFn1 (zipUp >>> _.syntax >>> syntaxHoles)
 
 listAllConflicts :: Fn1
   LangZipper
-  (Array {conflict :: LangSyntax, loc :: Array PathStep})
+  (Array {conflict :: LangSyntax, loc :: NodePath})
 listAllConflicts = mkFn1 (zipUp >>> _.syntax >>> syntaxConflicts)
 
 listLocalConflicts :: Fn1
   LangZipper
-  (Array {conflict :: LangSyntax, loc :: Array PathStep})
+  (Array {conflict :: LangSyntax, loc :: NodePath})
 listLocalConflicts = mkFn1 (_.syntax >>> syntaxConflicts)
 
 suggestionsToForeign :: SelectionSuggestions -> Foreign

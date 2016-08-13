@@ -6,6 +6,11 @@ import Data.Maybe (Maybe(Just, Nothing))
 
 type PathStep = Int
 
+-- | A `NodePath` points to an entire node in the zipper / tree.
+type NodePath = Array PathStep
+
+-- | A `CursorPath` points to a location *within* a node (ie a specific
+-- | character).
 data CursorPath
   = CursorOutOfScope
   | PathOffset Int

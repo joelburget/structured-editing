@@ -23,7 +23,7 @@ import Data.Traversable (sequence)
 import Generic (myOptions)
 
 import Template (DraftInline, DraftInlineType(..), InlineInfo, interpolateTemplate, inlineSelection)
-import Path (CursorPath, PathStep, subPath, getOffset)
+import Path (CursorPath, NodePath, subPath, getOffset)
 import Syntax (class Lang, Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Util (whenJust, iForM)
 
@@ -151,7 +151,7 @@ contentFromSyntax
   -- TODO change the Nothing case to CursorOutOfScope?
   -> Maybe CursorPath
   -> Maybe CursorPath
-  -> State Int {inlines :: Array DraftInline, ids :: Map Int (Array PathStep)}
+  -> State Int {inlines :: Array DraftInline, ids :: Map Int NodePath}
 contentFromSyntax (Conflict {term, insideTy, outsideTy}) anchor focus = do
   {inlines, ids} <- contentFromSyntax term (subPath 0 anchor) (subPath 0 focus)
   let inlines' = map (\li -> li { ty = InlineConflict }) inlines

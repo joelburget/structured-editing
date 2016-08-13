@@ -20,7 +20,7 @@ import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Partial.Unsafe (unsafePartial)
 
-import Path (CursorPath(..), (.+), PathStep)
+import Path (NodePath, CursorPath(..), (.+))
 import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpType, propagateDownType, zoomIn, ZoomedSZ(..), makePath, bookmark, moveTo, zipUp)
 import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
@@ -29,8 +29,8 @@ import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 data Action
   = Backspace
   | Typing Char
-  | TakeInside (Array PathStep)
-  | TakeOutside (Array PathStep)
+  | TakeInside NodePath
+  | TakeOutside NodePath
   | Tab { shift :: Boolean }
 
 derive instance genericAction :: Generic Action
