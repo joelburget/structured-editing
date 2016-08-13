@@ -23,12 +23,12 @@ import Generic (myOptions)
 
 import Path (NodePath, CursorPath(..), PathStep, subPath, getOffset)
 import Syntax (ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath)
-import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
+import Lang (LangZipper, LangSyntax, LangZoomed, LangConflictInfo, Internal, Leaf)
 import Operate (suggestCoherentSelection, SelectionSuggestions(..))
 import Serialize
 
 
-initSelectSyntax :: Fn1 Foreign (Either String ZoomedLang)
+initSelectSyntax :: Fn1 Foreign (Either String LangZoomed)
 initSelectSyntax = mkFn1 \foreignSelectSyntax -> do
   raw <- lmap show (read foreignSelectSyntax)
   unrawSelectSyntax raw
@@ -64,7 +64,7 @@ derive instance genericWrappedAnchorFocus :: Generic WrappedAnchorFocus
 instance foreignWrappedAnchorFocus :: IsForeign WrappedAnchorFocus where
   read = readGeneric myOptions
 
-setEndpoints :: Fn2 LangZipper Foreign (Either String ZoomedLang)
+setEndpoints :: Fn2 LangZipper Foreign (Either String LangZoomed)
 setEndpoints = mkFn2 \zipper foreignEndpoints -> do
   let top = zipUp zipper
   WrappedAnchorFocus {anchor: aOffset, focus: fOffset}

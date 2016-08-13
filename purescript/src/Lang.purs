@@ -15,10 +15,10 @@ import Path
 import Util
 
 
--- zipper and zoomed zipper for this particular language
+-- specialize a bunch of data structures for this language
 type LangSyntax = Syntax Internal Leaf
 type LangZipper = SyntaxZipper Internal Leaf
-type ZoomedLang = ZoomedSZ Internal Leaf
+type LangZoomed = ZoomedSZ Internal Leaf
 type LangPast = Past Internal Leaf
 type LangConflictInfo = ConflictInfo Internal Leaf
 
