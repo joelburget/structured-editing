@@ -2,8 +2,20 @@ import React from 'react';
 import { storiesOf, action } from '@kadira/storybook';
 
 import {StatefulStructuredEditor} from '../StructuredEditor';
+import {intBoolIsTemplated, intBoolIsLang} from '../purescript/output/Lang/index.js';
 
 const onChange = action('onChange');
+
+function TestEditor({selectSyntax}) {
+  return (
+    <StatefulStructuredEditor
+      onChange={onChange}
+      selectSyntax={selectSyntax}
+      templatedTreeInstance={intBoolIsTemplated}
+      langInstance={intBoolIsLang}
+    />
+  );
+}
 
 
 // 1 + hole
@@ -51,12 +63,7 @@ storiesOf('StructuredEditor', module)
       anchor: 8,
       focus: 8,
     };
-    return (
-      <StatefulStructuredEditor
-        onChange={onChange}
-        selectSyntax={selectSyntax}
-      />
-    );
+    return <TestEditor selectSyntax={selectSyntax} />;
   })
   .add('1 + _|', () => {
     const selectSyntax = {
@@ -64,12 +71,7 @@ storiesOf('StructuredEditor', module)
       anchor: 5,
       focus: 5,
     };
-    return (
-      <StatefulStructuredEditor
-        onChange={onChange}
-        selectSyntax={selectSyntax}
-      />
-    );
+    return <TestEditor selectSyntax={selectSyntax} />;
   })
   .add('|if true then hole 1 else 2', () => {
     const selectSyntax = {
@@ -102,12 +104,7 @@ storiesOf('StructuredEditor', module)
       anchor: 0,
       focus: 0,
     };
-    return (
-        <StatefulStructuredEditor
-      onChange={onChange}
-      selectSyntax={selectSyntax}
-        />
-    );
+    return <TestEditor selectSyntax={selectSyntax} />;
   })
   .add('false == _|', () => {
     const selectSyntax = {
@@ -133,12 +130,7 @@ storiesOf('StructuredEditor', module)
       anchor: 10,
       focus: 10,
     };
-    return (
-        <StatefulStructuredEditor
-      onChange={onChange}
-      selectSyntax={selectSyntax}
-        />
-    );
+    return <TestEditor selectSyntax={selectSyntax} />;
   })
   .add('|1 + 1', () => {
     const selectSyntax = {
@@ -167,12 +159,7 @@ storiesOf('StructuredEditor', module)
       anchor: 0,
       focus: 0,
     };
-    return (
-      <StatefulStructuredEditor
-        onChange={onChange}
-        selectSyntax={selectSyntax}
-      />
-    );
+    return <TestEditor selectSyntax={selectSyntax} />;
   }).add('|1| + 2 + 3', () => {
     const selectSyntax = {
       syntax: {
@@ -213,10 +200,5 @@ storiesOf('StructuredEditor', module)
       anchor: 0,
       focus: 1,
     };
-    return (
-      <StatefulStructuredEditor
-        onChange={onChange}
-        selectSyntax={selectSyntax}
-      />
-    );
+    return <TestEditor selectSyntax={selectSyntax} />;
   });

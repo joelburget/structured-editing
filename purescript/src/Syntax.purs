@@ -10,7 +10,7 @@ import Data.List as List
 import Control.Monad.State (State, StateT, modify, get, put, evalState, evalStateT, runState)
 import Data.Array as Array
 import Data.Array.Partial (unsafeIndex)
-import Data.Bifunctor (lmap, rmap)
+import Data.Bifunctor (rmap)
 import Data.Either (Either(..))
 import Data.Foreign (ForeignError(JSONError), readString)
 import Data.Foreign.Class (class IsForeign, readProp)
@@ -33,10 +33,15 @@ throwR :: forall e1 e2 m a. Applicative m => e2 -> ExceptT (Either e1 e2) m a
 throwR = ExceptT <<< pure <<< Left <<< Right
 
 
-class Lang internal leaf where
+-- Note: This would seemingly make more sense as `class TemplatedTree syntax`,
+-- but that would require `instance TemplatedTree (Syntax Internal Leaf)` for
+-- each language -- ie an orphan instance, since those instances shouldn't be
+-- defined in this module.
+class TemplatedTree internal leaf where
   getLeafTemplate :: Syntax internal leaf -> String
   getInternalTemplate :: Syntax internal leaf -> Template
 
+class (TemplatedTree internal leaf) <= Lang internal leaf where
   -- this is (right now) a limited notion of evaluation. i'd love to express a
   -- small-step semantics rather than a big-step all-at-once evaluation
   normalize :: Syntax internal leaf -> Syntax internal leaf
@@ -295,11 +300,18 @@ down dir zipper@{syntax, past} = case syntax of
       }
   x -> Nothing
 
-editFocus :: forall a b. (Syntax a b -> Syntax a b) -> SyntaxZipper a b -> SyntaxZipper a b
+editFocus
+  :: forall a b. (Syntax a b -> Syntax a b)
+  -> SyntaxZipper a b
+  -> SyntaxZipper a b
 editFocus f zipper@{syntax} = zipper {syntax = f syntax}
 
 
-makePath :: forall a b. Lang a b => Syntax a b -> Int -> Either String CursorPath
+makePath
+  :: forall a b. TemplatedTree a b
+  => Syntax a b
+  -> Int
+  -> Either String CursorPath
 makePath syntax n =
   let z = (runExceptT (consumePath syntax))
       y :: Tuple (Either (Either String CursorPath) Unit) Int
@@ -314,7 +326,7 @@ newtype ConsumedInPreviousChunks = ConsumedInPreviousChunks Int
 -- keep moving in to the outermost syntax holding this offset
 -- either give back the resulting path or the number of chars
 -- consumed
-consumePath :: forall a b. Lang a b -- Show b
+consumePath :: forall a b. TemplatedTree a b
             => Syntax a b
             -> ExceptT (Either String CursorPath) (State Int) Unit
 consumePath l@(Leaf _) = do

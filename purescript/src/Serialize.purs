@@ -9,7 +9,6 @@ import Data.List as List
 import Data.Map as Map
 import Data.String as String
 import Control.Monad.State (State, modify, get, evalState, execState)
-import Data.Bifunctor (lmap)
 import Data.Either (Either)
 import Data.Foldable (foldl)
 import Data.Foreign (Foreign, toForeign)
@@ -24,7 +23,7 @@ import Generic (myOptions)
 
 import Template (DraftInline, DraftInlineType(..), InlineInfo, interpolateTemplate, inlineSelection)
 import Path (CursorPath, NodePath, subPath, getOffset)
-import Syntax (class Lang, Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
+import Syntax (class TemplatedTree, Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Util (whenJust, iForM)
 
 
@@ -154,7 +153,7 @@ blockFromContent inlines =
 -- | This should be the case for `genContentState` but I'm not sure about
 -- | `genDisplayContentState`.
 contentFromSyntax
-  :: forall a b. (Lang a b)
+  :: forall a b. (TemplatedTree a b)
   => (Syntax a b)
   -- TODO change the Nothing case to CursorOutOfScope?
   -> CursorPath
@@ -258,7 +257,7 @@ instance rawSelectSyntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Ra
 -- | It takes a `RawSelectSyntax` -- a regular js object -- and turns it in to
 -- | our internal representation.
 unrawSelectSyntax
-  :: forall a b. (Lang a b)
+  :: forall a b. (TemplatedTree a b)
   => RawSelectSyntax a b
   -> Either String (ZoomedSZ a b)
 unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = do

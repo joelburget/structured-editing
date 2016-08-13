@@ -3,12 +3,14 @@ module Operate where
 import Prelude
 
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..), isLeft)
-import Data.Foreign (ForeignError(JSONError))
-import Data.Foreign.Class (class IsForeign, readProp)
+import Data.Foreign (Foreign, ForeignError(JSONError), toForeign)
+import Data.Foreign.Class (class IsForeign, readProp, read)
 import Data.Generic (class Generic, gShow, gEq)
 import Data.Array as Array
 import Data.Array.Partial (unsafeIndex)
+import Data.Function.Uncurried (mkFn1, Fn1, mkFn2, Fn2)
 import Data.Int as I
 import Data.List ((:))
 import Data.Maybe (Maybe(Just, Nothing))
@@ -21,7 +23,7 @@ import Data.Tuple (Tuple(..))
 import Partial.Unsafe (unsafePartial)
 
 import Path (NodePath, CursorPath(..), (.+))
-import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpType, propagateDownType, zoomIn, ZoomedSZ(..), makePath, bookmark, moveTo, zipUp)
+import Syntax (class Lang, SyntaxZipper, Syntax(..), Past, up, down, getLeafTemplate, infer, propagateUpType, propagateDownType, zoomIn, ZoomedSZ(..), makePath, bookmark, moveTo, zipUp, normalize)
 import Util (isDigit, spliceStr, spliceArr)
 import Lang (LangZipper, Internal(..), Leaf(..), LangSyntax, LangPast)
 
@@ -188,8 +190,8 @@ tabNavigate :: LangZipper -> Action -> Either String LangZipper
 tabNavigate zipper action = Left "tabbing not yet implemented!"
 
 -- TODO this should be part of the language definition
-operate :: LangZipper -> Action -> Either String LangZipper
-operate zipper@{syntax, anchor, focus} action = case action of
+doOperate :: LangZipper -> Action -> Either String LangZipper
+doOperate zipper@{syntax, anchor, focus} action = case action of
   (TakeOutside _) -> resolveConflictAt zipper action
   (TakeInside _) -> resolveConflictAt zipper action
   (Tab _) -> tabNavigate zipper action
@@ -356,3 +358,30 @@ operateAtomic zipper action = throwUserMessage $
   show zipper.syntax <> "\n\n" <>
   show zipper.anchor <> "\n\n" <>
   show action
+
+
+operate :: Fn2 LangZipper Foreign (Either String LangZipper)
+--   :: forall i l. Lang i l
+--   => Fn2 (SyntaxZipper i l) Foreign (Either String (SyntaxZipper i l))
+operate = mkFn2 \zipper foreignAction -> do
+  action <- lmap show (read foreignAction)
+  doOperate zipper action
+
+suggestionsToForeign :: SelectionSuggestions -> Foreign
+suggestionsToForeign MoveStart = toForeign "move-start"
+suggestionsToForeign MoveFinish = toForeign "move-finish"
+suggestionsToForeign MoveBoth = toForeign "move-both"
+suggestionsToForeign NoSuggestion = toForeign "no-suggestion"
+
+type SelectionInfo =
+  { selectionSuggestions :: Foreign
+  , evaluated :: LangSyntax
+  }
+
+selectionInfo :: Fn1 LangZipper SelectionInfo
+selectionInfo = mkFn1 \z ->
+  case zoomIn z of
+    ZoomedSZ zz ->
+      { selectionSuggestions: suggestionsToForeign (suggestCoherentSelection z)
+      , evaluated: normalize z.syntax
+      }

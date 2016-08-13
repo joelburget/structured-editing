@@ -4,11 +4,14 @@ import Prelude
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Data.Either (Either(..), isLeft, either)
 import Data.Foldable (any)
-import Data.Foreign (ForeignError(JSONError), readString)
+import Data.Foreign (Foreign, ForeignError(JSONError), readString)
 import Data.Foreign.Class (class IsForeign, readProp)
+import Data.Function.Uncurried (mkFn1, Fn1)
 import Data.Generic (class Generic, gShow, gEq)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Tuple
+
+import Interface as Interface
 import Syntax
 import Template
 import Path
@@ -282,7 +285,7 @@ propagateDownType {term, outsideTy} = case term of
   term@(Hole _) -> Internal Annot [term, outsideTy]
 
 
-instance intBoolIsLang :: Lang Internal Leaf where
+instance intBoolIsTemplated :: TemplatedTree Internal Leaf where
   getLeafTemplate = case _ of
     Leaf (BoolLeaf b) -> show b
     Leaf (IntLeaf i) -> show i
@@ -303,9 +306,13 @@ instance intBoolIsLang :: Lang Internal Leaf where
       -- Nothing -> "conflict: {{}: expected {} vs actual {}}"
     _ -> unsafeThrow "inconsistency: couldn't get internal template"
 
+instance intBoolIsLang :: Lang Internal Leaf where
   normalize = norm'
 
   propagateUpType = propagateUpType
   propagateDownType = propagateDownType
 
   infer = inf
+
+initSelectSyntax :: Fn1 Foreign (Either String LangZoomed)
+initSelectSyntax = Interface.initSelectSyntax

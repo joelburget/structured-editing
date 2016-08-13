@@ -20,15 +20,22 @@ import type {
 
 import {
   selectionInfo,
+  operate,
+} from './purescript/output/Operate/index.js';
+
+import {
+  initSelectSyntax,
+  intBoolIsTemplated,
+  intBoolIsLang,
+} from './purescript/output/Lang/index.js';
+
+import {
   listAllHoles,
   listAllConflicts,
-  operate,
-  operateAt,
   genContentState,
   genDisplayContentState,
-  initSelectSyntax,
   setEndpoints,
-} from './purescript/output/Main/index.js';
+} from './purescript/output/Interface/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
@@ -171,6 +178,7 @@ export class StructuredEditor extends React.Component {
   }
 
   render() {
+    const {opaqueSyntax, templatedTreeInstance, langInstance} = this.props;
     const {
       block,
       selection: {
@@ -178,7 +186,7 @@ export class StructuredEditor extends React.Component {
         focusOffset, focusKey,
       },
       preEntityMap,
-    } = genContentState(this.props.opaqueSyntax);
+    } = genContentState(templatedTreeInstance)(opaqueSyntax);
 
     const entityMap = {};
     preEntityMap.value0.forEach((val, ix) => {
@@ -201,8 +209,8 @@ export class StructuredEditor extends React.Component {
     // want to click elsewhere. only if the editor has focus.
     editorState = EditorState.forceSelection(editorState, selectionState);
 
-    const holeCount = listAllHoles(this.props.opaqueSyntax).length;
-    const conflictCount = listAllConflicts(this.props.opaqueSyntax).length;
+    const holeCount = listAllHoles(templatedTreeInstance)(opaqueSyntax).length;
+    const conflictCount = listAllConflicts(opaqueSyntax).length;
 
     const holeCountStr = holeCount === 1
       ? `${holeCount} hole`
@@ -274,7 +282,7 @@ function AdditionDisplay({opaqueSyntax}) {
   const {
     block,
     preEntityMap,
-  } = genDisplayContentState(opaqueSyntax);
+  } = genDisplayContentState(intBoolIsTemplated)(opaqueSyntax);
 
   const entityMap = {};
   preEntityMap.value0.forEach((val, ix) => {
@@ -298,10 +306,10 @@ function handleEither(either, left, right) {
 }
 
 export class StatefulStructuredEditor extends React.Component {
-  constructor({onChange, selectSyntax}) {
+  constructor(props) {
     super();
 
-    this.state = this._getState(selectSyntax);
+    this.state = this._getState(props.selectSyntax);
 
     this.onChange = command => this._onChange(command);
     this.handleMoveCursor = anchorFocus => this._handleMoveCursor(anchorFocus);
@@ -345,7 +353,7 @@ export class StatefulStructuredEditor extends React.Component {
 
   _handleMoveCursor(anchorFocus) {
     handleEither(
-      setEndpoints(this.state.opaqueSyntax, anchorFocus),
+      setEndpoints(this.props.templatedTreeInstance)(this.state.opaqueSyntax, anchorFocus),
       lastWarning => this.setState({lastWarning}),
       opaqueSyntax => {
         this.setState({
@@ -365,6 +373,7 @@ export class StatefulStructuredEditor extends React.Component {
   }
 
   render() {
+    const {templatedTreeInstance, langInstance} = this.props;
     const {opaqueSyntax, lastWarning} = this.state;
     return (
       <div style={styles.root}>
@@ -372,6 +381,8 @@ export class StatefulStructuredEditor extends React.Component {
           onChange={this.onChange}
           onMoveCursor={this.handleMoveCursor}
           opaqueSyntax={opaqueSyntax}
+          templatedTreeInstance={templatedTreeInstance}
+          langInstance={langInstance}
           ref={ref => this.editor = ref}
         />
         {lastWarning && <pre style={styles.err}>{lastWarning}</pre>}
