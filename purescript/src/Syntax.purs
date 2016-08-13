@@ -41,6 +41,12 @@ class TemplatedTree internal leaf where
   getLeafTemplate :: Syntax internal leaf -> String
   getInternalTemplate :: Syntax internal leaf -> Template
 
+class Operational internal leaf where
+  doOperate
+    :: SyntaxZipper internal leaf
+    -> Action
+    -> Either String (SyntaxZipper internal leaf)
+
 class (TemplatedTree internal leaf) <= Lang internal leaf where
   -- this is (right now) a limited notion of evaluation. i'd love to express a
   -- small-step semantics rather than a big-step all-at-once evaluation
@@ -376,3 +382,33 @@ consumePath i@(Internal _ children) = do
 
 consumePath (Conflict {term}) =
   withExceptT (rmap (PathCons 0)) (consumePath term)
+
+
+data Action
+  = Backspace
+  | Typing Char
+  | TakeInside NodePath
+  | TakeOutside NodePath
+  | Tab { shift :: Boolean }
+
+derive instance genericAction :: Generic Action
+instance showAction :: Show Action where show = gShow
+instance eqAction :: Eq Action where eq = gEq
+
+-- "expected one of ["Main.Backspace","Main.Typing"]"
+-- instance foreignAction :: IsForeign Action where
+--   read = readGeneric myOptions
+
+instance actionIsForeign :: IsForeign Action where
+  read obj = do
+    tag <- readProp "tag" obj
+    case tag of
+      "typing" -> Typing <$> readProp "value" obj
+      "backspace" -> pure Backspace
+      "take-outside" -> TakeOutside <$> readProp "loc" obj
+      "take-inside" -> TakeInside <$> readProp "loc" obj
+      "tab" -> do
+        shift <- readProp "shift" obj
+        pure $ Tab {shift}
+      _ -> Left (JSONError "found unexpected value in actionIsForeign")
+

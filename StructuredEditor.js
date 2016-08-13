@@ -19,14 +19,11 @@ import type {
 } from 'draft-js';
 
 import {
-  selectionInfo,
-  operate,
-} from './purescript/output/Operate/index.js';
-
-import {
-  initSelectSyntax,
   intBoolIsTemplated,
   intBoolIsLang,
+  intBoolIsOperate,
+  initSelectSyntax,
+  selectionInfo,
 } from './purescript/output/Lang/index.js';
 
 import {
@@ -35,6 +32,7 @@ import {
   genContentState,
   genDisplayContentState,
   setEndpoints,
+  operate,
 } from './purescript/output/Interface/index.js';
 
 const {hasCommandModifier} = KeyBindingUtil;
@@ -342,7 +340,7 @@ export class StatefulStructuredEditor extends React.Component {
 
   _onChange(command) {
     handleEither(
-      operate(this.state.opaqueSyntax, command),
+      operate(intBoolIsOperate)(this.state.opaqueSyntax, command),
       lastWarning => this.setState({lastWarning}),
       opaqueSyntax => {
         this.setState({opaqueSyntax, lastWarning: null});

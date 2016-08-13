@@ -21,7 +21,7 @@ import Data.Traversable (sequence)
 import Generic (myOptions)
 
 import Path (NodePath, CursorPath(..), PathStep, subPath, getOffset)
-import Syntax (class TemplatedTree, class Lang, Syntax, SyntaxZipper, ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath)
+import Syntax (class Operational, class TemplatedTree, class Lang, Syntax, SyntaxZipper, ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, doOperate)
 import Serialize
 
 
@@ -100,3 +100,13 @@ listLocalConflicts
   => Fn1 (SyntaxZipper i l)
          (Array {conflict :: (Syntax i l), loc :: NodePath})
 listLocalConflicts = mkFn1 (_.syntax >>> syntaxConflicts)
+
+
+operate
+  :: forall i l. Operational i l
+  => Fn2 (SyntaxZipper i l) Foreign (Either String (SyntaxZipper i l))
+--   :: forall i l. Lang i l
+--   => Fn2 (SyntaxZipper i l) Foreign (Either String (SyntaxZipper i l))
+operate = mkFn2 \zipper foreignAction -> do
+  action <- lmap show (read foreignAction)
+  doOperate zipper action
