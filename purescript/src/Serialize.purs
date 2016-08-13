@@ -145,6 +145,14 @@ blockFromContent inlines =
 
 -- | Serialize syntax into an array of spans and a mapping from `Int` ids to
 -- | the path to reach the identified node.
+-- |
+-- | Each node in the tree gets a uniquely generated id. This id is attached to
+-- | each `DraftInline`. This way it's trivial to take any given character,
+-- | find its id, and map that to a `NodePath` to find it in the tree.
+-- |
+-- | TODO(joel) disambiguate whether this path is from the root of the tree.
+-- | This should be the case for `genContentState` but I'm not sure about
+-- | `genDisplayContentState`.
 contentFromSyntax
   :: forall a b. (Lang a b)
   => (Syntax a b)

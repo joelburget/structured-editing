@@ -19,9 +19,10 @@ import Data.Generic (class Generic)
 import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
+import Generic (myOptions)
+
 import Path (NodePath, CursorPath(..), PathStep, subPath, getOffset)
 import Syntax (ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath)
-import Generic (myOptions)
 import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
 import Operate (suggestCoherentSelection, SelectionSuggestions(..))
 import Serialize
