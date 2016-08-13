@@ -15,8 +15,6 @@ import Path
 import Util
 
 
-data IntBoolLang = IntBoolLang
-
 -- zipper and zoomed zipper for this particular language
 type LangSyntax = Syntax Internal Leaf
 type LangZipper = SyntaxZipper Internal Leaf
