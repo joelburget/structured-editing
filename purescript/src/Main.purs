@@ -23,7 +23,7 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(Just, Nothing), maybe)
 import Data.Traversable (sequence)
 import Path (CursorPath, PathStep, subPath, getOffset)
-import Syntax (Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
+import Syntax (class Lang, Syntax(Conflict, Hole, Leaf, Internal), ZoomedSZ(ZoomedSZ), normalize, zoomIn, syntaxHoles, syntaxConflicts, zipUp, makePath, getLeafTemplate, getInternalTemplate)
 import Generic (myOptions)
 import Lang (LangZipper, LangSyntax, ZoomedLang, LangConflictInfo, Internal, Leaf)
 import Operate (suggestCoherentSelection, SelectionSuggestions(..))
@@ -127,9 +127,8 @@ blockFromContent inlines =
      , preEntityMap: toPreEntityMap finalState.preEntityMap
      }
 
--- contentFromSyntax :: forall a b. Show b
---                   => (Syntax a b)
-contentFromSyntax :: LangSyntax
+contentFromSyntax :: forall a b. (Lang a b)
+                  => (Syntax a b)
                   -- TODO change the Nothing case to CursorOutOfScope?
                   -> Maybe CursorPath
                   -> Maybe CursorPath
@@ -227,8 +226,10 @@ instance rawSelectSyntaxIsForeign :: (IsForeign a, IsForeign b) => IsForeign (Ra
       }
       )
 
--- unrawSelectSyntax :: forall a b. Show b => RawSelectSyntax a b -> Either String (ZoomedSZ a b)
-unrawSelectSyntax :: RawSelectSyntax Internal Leaf -> Either String ZoomedLang
+unrawSelectSyntax
+  :: forall a b. (Lang a b)
+  => RawSelectSyntax a b
+  -> Either String (ZoomedSZ a b)
 unrawSelectSyntax (RawSelectSyntax {anchor: aOffset, focus: fOffset, syntax}) = do
   anchor <- makePath syntax aOffset
   focus <- makePath syntax fOffset
