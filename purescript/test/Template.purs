@@ -13,7 +13,7 @@ import Test.Unit.Assert as Assert
 import Template
 import Lang
 
-newtype LIEq = LIEq LightInline
+newtype LIEq = LIEq DraftInline
 instance lieq :: Eq LIEq where
   eq (LIEq li1) (LIEq li2) = li1.ty == li2.ty
     && li1.key == li2.key
@@ -26,8 +26,8 @@ instance showLIEq :: Show LIEq where
 additionTemplate :: Template
 additionTemplate = mkTemplate "{} + {}"
 
-assertTemplateEq :: forall e. Array LightInline
-                 -> Maybe (Array LightInline)
+assertTemplateEq :: forall e. Array DraftInline
+                 -> Maybe (Array DraftInline)
                  -> Test e
 assertTemplateEq expected found = Assert.equal
   (Just (LIEq <$> expected))

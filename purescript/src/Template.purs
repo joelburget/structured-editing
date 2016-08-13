@@ -29,17 +29,17 @@ type TemplateMeta =
 
 type InlineInfo = { anchor :: Maybe Int , focus :: Maybe Int }
 
-type LightInline =
-  { ty :: LightInlineType
+type DraftInline =
+  { ty :: DraftInlineType
   , key :: Int
   , content :: String
   , info :: InlineInfo
   }
 
-data LightInlineType = InlineInternal | InlineLeaf | InlineHole | InlineConflict
-derive instance genericLightInlineType :: Generic LightInlineType
-instance showLightInlineType :: Show LightInlineType where show = gShow
-instance eqLightInlineType :: Eq LightInlineType where eq = gEq
+data DraftInlineType = InlineInternal | InlineLeaf | InlineHole | InlineConflict
+derive instance genericDraftInlineType :: Generic DraftInlineType
+instance showDraftInlineType :: Show DraftInlineType where show = gShow
+instance eqDraftInlineType :: Eq DraftInlineType where eq = gEq
 
 ------ PARSERS
 
@@ -56,15 +56,15 @@ mkTemplate = split "{}" >>> map TemplateStr >>> intersperse TemplateHole >>> fil
 
 ------
 
-type AccumState = {fillers :: Array (Array LightInline), pos :: Int}
+type AccumState = {fillers :: Array (Array DraftInline), pos :: Int}
 
 interpolateTemplate :: Template
-                    -> LightInlineType
+                    -> DraftInlineType
                     -> TemplateMeta
-                    -> Array (Array LightInline)
-                    -> Maybe (Array LightInline)
+                    -> Array (Array DraftInline)
+                    -> Maybe (Array DraftInline)
 interpolateTemplate template ty {key, anchorOffset, focusOffset} fillers =
-  let mkPiece :: Int -> String -> Array LightInline
+  let mkPiece :: Int -> String -> Array DraftInline
       mkPiece start content = pure
         { ty
         , key
@@ -74,7 +74,7 @@ interpolateTemplate template ty {key, anchorOffset, focusOffset} fillers =
 
       go :: AccumState
          -> TemplatePiece
-         -> Accum AccumState (Maybe (Array LightInline))
+         -> Accum AccumState (Maybe (Array DraftInline))
       go accum piece = case piece of
         TemplateHole -> case Array.uncons accum.fillers of
           Just {head, tail} ->
@@ -92,7 +92,7 @@ interpolateTemplate template ty {key, anchorOffset, focusOffset} fillers =
   in case result.accum.fillers of
        -- there shouldn't be any leftovers
        [] -> do
-         -- result.value :: Array (Maybe (Array LightInline))
+         -- result.value :: Array (Maybe (Array DraftInline))
          val <- sequence result.value
          pure (join val)
          -- sequence result.value
