@@ -1,8 +1,8 @@
 // @flow
+import React from 'react';
 import { List } from 'immutable';
 import {
   convertFromRaw,
-  // convertToRaw,
   CompositeDecorator,
   ContentBlock,
   ContentState,
@@ -12,19 +12,6 @@ import {
   getDefaultKeyBinding,
   KeyBindingUtil,
 } from 'draft-js';
-import React from 'react';
-
-import type {
-  RawDraftContentBlock,
-} from 'draft-js';
-
-import {
-  intBoolIsTemplated,
-  intBoolIsLang,
-  intBoolIsOperate,
-  initSelectSyntax,
-  selectionInfo,
-} from './purescript/output/Lang/index.js';
 
 import {
   listAllHoles,
@@ -33,7 +20,7 @@ import {
   genDisplayContentState,
   setEndpoints,
   operate,
-} from './purescript/output/Interface/index.js';
+} from './purescript/output/Interface';
 
 const {hasCommandModifier} = KeyBindingUtil;
 
@@ -41,7 +28,7 @@ const entityTypes = {
   leaf: {
     type: 'TOKEN',
     mutability: 'MUTABLE',
-    data: {type: 'number'},
+    data: {type: 'leaf'},
   },
   hole: {
     type: 'TOKEN',
@@ -51,7 +38,7 @@ const entityTypes = {
   internal: {
     type: 'TOKEN',
     mutability: 'MUTABLE',
-    data: {type: 'plus'},
+    data: {type: 'internal'},
   },
   conflict: {
     type: 'TOKEN',
@@ -60,47 +47,30 @@ const entityTypes = {
   },
 };
 
-const components = {
-  plus: ({children}) => {
-    // assert React.Children.count(children) === 2
-    // const [l, r] = children;
-    return <span>{children}</span>;
-  },
-  number: ({children}) => {
-    return <span style={styles.number}>{children}</span>
-  },
-  hole: ({children}) => (
-    // TODO
-    // {React.Children.only(children)}
-    <span style={styles.hole}>{children}</span>
-  ),
-  conflict: ({children}) => (
-      <span style={styles.conflict}>{children}</span>
-  ),
-};
+export function mkDataDecorator(components) {
+  return {
+    getDecorations(block: ContentBlock): List<?string> {
+      const length = block.getLength();
+      const arr = [];
+      for (let i = 0; i < length; i ++) {
+        const key = block.getEntityAt(i);
+        arr.push(key);
+      }
 
-const DataDecorator = {
-  getDecorations(block: ContentBlock): List<?string> {
-    const length = block.getLength();
-    const arr = [];
-    for (let i = 0; i < length; i ++) {
-      const key = block.getEntityAt(i);
-      arr.push(key);
-    }
+      return List(arr);
+    },
 
-    return List(arr);
-  },
+    getComponentForKey(key: string): Function {
+      const entity = Entity.get(key);
+      const tyName = entity.data.type;
+      return components[tyName];
+    },
 
-  getComponentForKey(key: string): Function {
-    const entity = Entity.get(key);
-    const tyName = entity.data.type;
-    return components[tyName];
-  },
-
-  getPropsForKey(key: string): ?Object {
-    return null;
-  },
-};
+    getPropsForKey(key: string): ?Object {
+      return null;
+    },
+  };
+}
 
 
 // The only operation we need to catch and handle specially is backspace.
@@ -176,39 +146,13 @@ export class StructuredEditor extends React.Component {
   }
 
   render() {
-    const {opaqueSyntax, templatedTreeInstance, langInstance} = this.props;
-    const {
-      block,
-      selection: {
-        anchorOffset, anchorKey,
-        focusOffset, focusKey,
-      },
-      preEntityMap,
-    } = genContentState(templatedTreeInstance)(opaqueSyntax);
-
-    const entityMap = {};
-    preEntityMap.value0.forEach((val, ix) => {
-      entityMap[ix] = entityTypes[val];
-    });
-    const contentState = convertFromRaw({
-      blocks: [Object.assign({}, block, {type: 'unstyled'})],
-      entityMap,
-    });
-    let editorState = EditorState.createWithContent(
-      contentState, DataDecorator
-    );
-    const selectionState = editorState.getSelection().merge({
-      focusKey, focusOffset,
-      anchorKey, anchorOffset,
-      isBackward: focusOffset < anchorOffset,
-    });
-
+    const {opaqueZipper, templatedInstance, langInstance} = this.props;
     // TODO we don't *always* want this selection to be force. sometimes you
     // want to click elsewhere. only if the editor has focus.
-    editorState = EditorState.forceSelection(editorState, selectionState);
+    const editorState = mkZipperEditorState(this.props);
 
-    const holeCount = listAllHoles(templatedTreeInstance)(opaqueSyntax).length;
-    const conflictCount = listAllConflicts(opaqueSyntax).length;
+    const holeCount = listAllHoles(templatedInstance)(opaqueZipper).length;
+    const conflictCount = listAllConflicts(opaqueZipper).length;
 
     const holeCountStr = holeCount === 1
       ? `${holeCount} hole`
@@ -218,38 +162,15 @@ export class StructuredEditor extends React.Component {
       ? `${conflictCount} conflict`
       : `${conflictCount} conflicts`;
 
-    /*
-    const conflicts = listAllConflicts(this.props.opaqueSyntax)
-      .map(({conflict, loc}) => {
-        const {outsideTy, insideTy} = conflict.value0;
-        return (
-          <li>
-            <ul style={styles.conflictList}>
-              <li>
-                <AdditionDisplay opaqueSyntax={conflict} />
-              </li>
-              <li style={styles.conflictItem}>
-                <button onClick={() => this.handleResolve(loc, 'take-outside')}>take</button>
-                <div>outside:</div>
-                <div><AdditionDisplay opaqueSyntax={outsideTy} /></div>
-              </li>
-              <li style={styles.conflictItem}>
-                <button onClick={() => this.handleResolve(loc, 'take-inside')}>take</button>
-                <div>inside:</div>
-                <div><AdditionDisplay opaqueSyntax={insideTy} /></div>
-              </li>
-            </ul>
-          </li>
-        );
-      });
-   */
+    // const {evaluated, selectionSuggestions} =
+    //   selectionInfo(this.props.opaqueZipper);
 
-    const {evaluated, selectionSuggestions} =
-      selectionInfo(this.props.opaqueSyntax);
+    // const suggestion = selectionSuggestions === 'no-suggestion'
+    //   ? null
+    //   : <p>suggestion: {selectionSuggestions}</p>;
 
-    const suggestion = selectionSuggestions === 'no-suggestion'
-      ? null
-      : <p>suggestion: {selectionSuggestions}</p>;
+    // {suggestion}
+    // <div>evaluated selection: <AdditionDisplay opaqueSyntax={evaluated} /></div>
 
     return (
       <div style={styles.root}>
@@ -267,8 +188,6 @@ export class StructuredEditor extends React.Component {
         </div>
         <div style={styles.info}>
           <h3>info</h3>
-          {suggestion}
-          <div>evaluated selection: <AdditionDisplay opaqueSyntax={evaluated} /></div>
           <p>{holeCountStr}, {conflictCountStr}</p>
         </div>
       </div>
@@ -276,25 +195,55 @@ export class StructuredEditor extends React.Component {
   }
 }
 
-function AdditionDisplay({opaqueSyntax}) {
-  const {
-    block,
-    preEntityMap,
-  } = genDisplayContentState(intBoolIsTemplated)(opaqueSyntax);
 
+function mkContentState({preEntityMap, block}) {
   const entityMap = {};
   preEntityMap.value0.forEach((val, ix) => {
     entityMap[ix] = entityTypes[val];
   });
-  const contentState = convertFromRaw({
+  return convertFromRaw({
     blocks: [Object.assign({}, block, {type: 'unstyled'})],
     entityMap,
   });
-  let editorState = EditorState.createWithContent(
-    contentState, DataDecorator
+}
+
+function mkSyntaxEditorState({templatedInstance, opaqueSyntax, DataDecorator}) {
+  const preContentState =
+    genDisplayContentState(templatedInstance)(opaqueSyntax);
+
+  return EditorState.createWithContent(
+    mkContentState(preContentState),
+    DataDecorator
+  );
+}
+
+function mkZipperEditorState({templatedInstance, opaqueZipper, DataDecorator}) {
+  const {
+    selection,
+    ...preContentState,
+  } = genContentState(templatedInstance)(opaqueZipper);
+
+  const editorState = EditorState.createWithContent(
+    mkContentState(preContentState),
+    DataDecorator
   );
 
-  return <Editor editorState={editorState} />;
+  const {anchorOffset, focusOffset} = selection;
+  const selectionState = editorState.getSelection().merge({
+    ...selection,
+    isBackward: focusOffset < anchorOffset,
+  });
+  return EditorState.forceSelection(editorState, selectionState);
+}
+
+export function StructureDisplay(props) {
+  return (
+    <Editor
+      editorState={mkSyntaxEditorState(props)}
+      // TODO should we handle events?
+      onChange={() => {}}
+    />
+  );
 }
 
 function handleEither(either, left, right) {
@@ -305,7 +254,7 @@ function handleEither(either, left, right) {
 
 export class StatefulStructuredEditor extends React.Component {
   constructor(props) {
-    super();
+    super(props);
 
     this.state = this._getState(props.selectSyntax);
 
@@ -320,18 +269,18 @@ export class StatefulStructuredEditor extends React.Component {
 
   _getState(selectSyntax) {
     return handleEither(
-      initSelectSyntax(selectSyntax),
+      this.props.initSelectSyntax(selectSyntax),
       lastWarning => {
         console.log(lastWarning);
         return {
-          // TODO we don't actually handle the case when opaqueSyntax is null
-          opaqueSyntax: null,
+          // TODO we don't actually handle the case when opaqueZipper is null
+          opaqueZipper: null,
           lastWarning,
         };
       },
-      opaqueSyntax => {
+      opaqueZipper => {
         return {
-          opaqueSyntax,
+          opaqueZipper,
           lastWarning: null,
         };
       }
@@ -340,26 +289,26 @@ export class StatefulStructuredEditor extends React.Component {
 
   _onChange(command) {
     handleEither(
-      operate(intBoolIsOperate)(this.state.opaqueSyntax, command),
+      operate(this.props.operateInstance)(this.state.opaqueZipper, command),
       lastWarning => this.setState({lastWarning}),
-      opaqueSyntax => {
-        this.setState({opaqueSyntax, lastWarning: null});
-        this.props.onChange(opaqueSyntax, command);
+      opaqueZipper => {
+        this.setState({opaqueZipper, lastWarning: null});
+        this.props.onChange(opaqueZipper, command);
       }
     );
   }
 
   _handleMoveCursor(anchorFocus) {
     handleEither(
-      setEndpoints(this.props.templatedTreeInstance)(this.state.opaqueSyntax, anchorFocus),
+      setEndpoints(this.props.templatedInstance)(this.state.opaqueZipper, anchorFocus),
       lastWarning => this.setState({lastWarning}),
-      opaqueSyntax => {
+      opaqueZipper => {
         this.setState({
-          opaqueSyntax,
+          opaqueZipper,
           lastWarning: null,
         });
         this.props.onChange(
-          opaqueSyntax,
+          opaqueZipper,
           {tag: 'move-cursor', value: anchorFocus}
         );
       }
@@ -371,16 +320,18 @@ export class StatefulStructuredEditor extends React.Component {
   }
 
   render() {
-    const {templatedTreeInstance, langInstance} = this.props;
-    const {opaqueSyntax, lastWarning} = this.state;
+    const {templatedInstance, langInstance, operateInstance, DataDecorator} = this.props;
+    const {opaqueZipper, lastWarning} = this.state;
     return (
       <div style={styles.root}>
         <StructuredEditor
           onChange={this.onChange}
           onMoveCursor={this.handleMoveCursor}
-          opaqueSyntax={opaqueSyntax}
-          templatedTreeInstance={templatedTreeInstance}
+          DataDecorator={DataDecorator}
+          opaqueZipper={opaqueZipper}
+          templatedInstance={templatedInstance}
           langInstance={langInstance}
+          operateInstance={operateInstance}
           ref={ref => this.editor = ref}
         />
         {lastWarning && <pre style={styles.err}>{lastWarning}</pre>}
@@ -395,15 +346,6 @@ const styles = {
   },
   err: {
     borderLeft: '3px solid rgba(255, 112, 0, 0.43)',
-  },
-  number: {
-    backgroundColor: 'rgba(0, 0, 255, 0.09)',
-  },
-  hole: {
-    backgroundColor: 'rgba(255, 177, 0, 0.25)',
-  },
-  conflict: {
-    backgroundColor: 'rgba(255, 0, 0, 0.09)',
   },
   info: {
   },

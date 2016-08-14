@@ -1,18 +1,15 @@
 import React from 'react';
-import { storiesOf, action } from '@kadira/storybook';
+import {storiesOf, action} from '@kadira/storybook';
 
-import {StatefulStructuredEditor} from '../StructuredEditor';
-import {intBoolIsTemplated, intBoolIsLang} from '../purescript/output/Lang/index.js';
+import {StatefulIntBoolEditor} from '../IntBoolEditor';
 
 const onChange = action('onChange');
 
 function TestEditor({selectSyntax}) {
   return (
-    <StatefulStructuredEditor
+    <StatefulIntBoolEditor
       onChange={onChange}
       selectSyntax={selectSyntax}
-      templatedTreeInstance={intBoolIsTemplated}
-      langInstance={intBoolIsLang}
     />
   );
 }
@@ -56,7 +53,7 @@ const emptyHole = {
   ]
 };
 
-storiesOf('StructuredEditor', module)
+storiesOf('Int / Bool Editor', module)
   .add('1 + hole|', () => {
     const selectSyntax = {
       syntax: holeHole,

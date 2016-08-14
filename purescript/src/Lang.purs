@@ -18,8 +18,6 @@ import Partial.Unsafe (unsafePartial)
 import Data.Int as I
 import Data.List ((:))
 import Data.Foldable (any)
-import Data.Foreign (Foreign, ForeignError(JSONError), readString)
-import Data.Foreign.Class (class IsForeign, readProp)
 import Data.Function.Uncurried (mkFn1, Fn1)
 import Data.Array as Array
 import Data.Array.Partial (unsafeIndex)
