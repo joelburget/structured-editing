@@ -1,0 +1,6 @@
+language: node_js
+before_script:
+  - bundle exec danger
+node_js:
+  - "6"
+rvm: 2.0.0

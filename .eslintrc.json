@@ -1,0 +1,20 @@
+{
+  "extends": "airbnb",
+  "parser": "babel-eslint",
+  "plugins": [
+    "flowtype"
+  ],
+  "rules": {
+    "flowtype/define-flow-type": 1,
+    "flowtype/use-flow-type": 1,
+    "no-duplicate-imports": 0,
+    "import/no-duplicates": 1,
+    "react/jsx-filename-extension": [1, { "extensions": [".js", ".jsx"] }],
+    "new-cap": 0,
+    "no-underscore-dangle": 0,
+    "no-else-return": 0,
+    "no-nested-ternary": 0,
+    "no-use-before-define": ["error", { "classes": false }],
+    "func-names": 0
+  }
+}

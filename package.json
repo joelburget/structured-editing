@@ -1,0 +1,45 @@
+{
+  "name": "hazel-frontend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint .",
+    "storybook": "start-storybook -p 6006",
+    "build-storybook": "build-storybook"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "eslint-plugin-flowtype": "^2.25.0",
+    "extendable-immutable": "^1.3.0",
+    "immutable": "^3.8.1",
+    "jssha": "^2.2.0",
+    "react": "^15.3.2",
+    "react-autosuggest": "^3.7.4",
+    "react-dom": "^15.3.2",
+    "slate": "^0.14.15"
+  },
+  "devDependencies": {
+    "@kadira/storybook": "^2.5.2",
+    "babel-eslint": "^7.0.0",
+    "babel-jest": "^16.0.0",
+    "babel-loader": "^6.2.5",
+    "babel-polyfill": "^6.16.0",
+    "babel-preset-react": "^6.5.0",
+    "babel-preset-stage-0": "^6.16.0",
+    "eslint": "^3.8.1",
+    "eslint-config-airbnb": "^12.0.0",
+    "eslint-plugin-flowtype": "^2.20.0",
+    "eslint-plugin-import": "^1.16.0",
+    "eslint-plugin-jsx-a11y": "^2.2.3",
+    "eslint-plugin-react": "^6.4.1",
+    "expose-loader": "^0.7.1",
+    "flow-bin": "^0.33.0",
+    "jest": "^16.0.2",
+    "raw-loader": "^0.5.1",
+    "react-addons-perf": "^15.3.2",
+    "transform-loader": "^0.2.3"
+  }
+}
