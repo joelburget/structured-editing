@@ -1,6 +1,10 @@
 language: node_js
+before_install:
+  - rvm install 2.3.1
 before_script:
+  - rvm use 2.3.1
+  - gem install bundler
+  - bundle install
   - bundle exec danger
 node_js:
   - "6"
-rvm: 2.0.0
