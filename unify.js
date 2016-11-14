@@ -1,7 +1,7 @@
 // @flow
 
 import { set as setAddr, expand } from './Address';
-import { Application } from './forms/bootstrap';
+import { Application } from './forms/Application';
 
 import type { Term, Unif, TypecheckResult, UnificationResult } from './types';
 import type { Address } from './Address';

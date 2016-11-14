@@ -5,7 +5,6 @@ import { Inline } from 'slate';
 
 import { expand, hashObj, set as setAddr } from './Address';
 import { mkStructuralKey, mkAddrKey, mkText } from './slateHelpers';
-import { unify } from './unify';
 
 import type { Address } from './Address';
 import type {
@@ -63,6 +62,7 @@ export function noPullImpl(target) {
 // XXX this needs to be revamped
 export function fixedType(ty: Term<Address>) {
   return function (target) {
+    /*
     target.prototype.pushType = function (
       pushedTy: Term<Unif>
     ): UnificationResult {
@@ -72,6 +72,7 @@ export function fixedType(ty: Term<Address>) {
     target.prototype.pullType = function (): Term<Unif> {
       return ty.hash;
     };
+    */
   };
 }
 
