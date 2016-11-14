@@ -8,13 +8,13 @@ import type { Address } from '../Address';
 import type { Term, Meta, Unif, UnificationResult } from '../types';
 import type { SlatePath, SlateVal } from '../slateHelpers';
 
-// Application is very important:
+// Cut is very important:
 // * It's where value and computation collide to annihilate
 // * It's where we connect new sockets
 //
 // This is a list of two terms: one must be a value, the other a computation.
 // But we don't prescribe an order.
-export class Application<A> extends ExList {
+export default class Cut<A> extends ExList {
   slate(path: SlatePath): SlateVal {
     return new Inline({
       type: 'span',
@@ -35,4 +35,4 @@ export class Application<A> extends ExList {
   }
 }
 
-hashable(Application);
+hashable(Cut);

@@ -1,7 +1,7 @@
 // @flow
 
 import { set as setAddr, expand } from './Address';
-import { Application } from './forms/Application';
+import Cut from './forms/Cut';
 
 import type { Term, Unif, TypecheckResult, UnificationResult } from './types';
 import type { Address } from './Address';
@@ -24,8 +24,8 @@ export function typecheck(tm: ?Term<Unif>, ty: ?Term<Unif>, relation): Typecheck
   }
 
   // TODO this is hacky
-  if (tm instanceof Application) tm = normalize(setAddr(tm));
-  if (ty instanceof Application) ty = normalize(setAddr(ty));
+  if (tm instanceof Cut) tm = normalize(setAddr(tm));
+  if (ty instanceof Cut) ty = normalize(setAddr(ty));
 
   if (relation.accepts(tm, ty)) {
     return relation.stitch(tm, ty);
@@ -58,7 +58,7 @@ type Binding = NominalBinding | PositionalBinding | AtomicBinding;
 
 function normalize(addr: Address): Term<Address> {
   let curVal: Term<Address> = expand(addr);
-  while (curVal instanceof Application) {
+  while (curVal instanceof Cut) {
     curVal = expand(curVal.annihilate());
   }
   return curVal;

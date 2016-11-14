@@ -2,7 +2,7 @@
 /* eslint-env jest */
 
 import { set as setAddr, expand, debugExpand } from '../../Address';
-import { Application } from '../Application';
+import Cut from '../Cut';
 import { typecheck, unify, BadRelation } from '../../unify';
 import { Rec, RecTy, RecRelation, FieldAccess } from '../Rec';
 import { Int, IntTy, IntRelation } from '../Int';
@@ -16,7 +16,7 @@ const recTy = new RecTy({ a: IntTy.addr });
 const name: Address = setAddr(new Uninterpreted({ str: 'a' }));
 const computation: FieldAccess<Address> = new FieldAccess({ name });
 const computationAddr: Address = setAddr(computation);
-const app = new Application([computationAddr, rec]);
+const app = new Cut([computationAddr, rec]);
 const appAddr = setAddr(app);
 
 describe('unification', () => {
@@ -76,7 +76,7 @@ describe('unification / evaluation', () => {
   // (...).a
   const computationAddr_ = setAddr(new FieldAccess({ name, rec: rec_ }));
   const appAddr_ = setAddr(
-    new Application([computationAddr_, rec_])
+    new Cut([computationAddr_, rec_])
   );
 
   // both sides should just reduce to `1`
