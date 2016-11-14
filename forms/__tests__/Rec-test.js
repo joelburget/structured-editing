@@ -2,7 +2,7 @@
 /* eslint-env jest */
 
 import { set as setAddr, expand, debugExpand } from '../../Address';
-import { Application } from '../bootstrap';
+import { Application } from '../Application';
 import { typecheck, unify, BadRelation } from '../../unify';
 import { Rec, RecTy, RecRelation, FieldAccess } from '../Rec';
 import { Int, IntTy, IntRelation } from '../Int';

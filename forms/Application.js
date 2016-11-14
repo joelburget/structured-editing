@@ -2,6 +2,7 @@
 import { List as ExList } from 'extendable-immutable';
 
 import { hashable } from '../decorators';
+import { expand } from '../Address';
 
 import type { Address } from '../Address';
 import type { Term, Meta, Unif, UnificationResult } from '../types';
