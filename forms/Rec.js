@@ -162,3 +162,15 @@ FieldAccess.unifyChildren = function (
 ): ?FieldAccess<Unif> {
 
 }
+
+export class Destructure extends Record({ body: null }){
+  slate(path: SlatePath): SlateVal {
+  }
+
+  normalize(arg: Address): Address {
+    const body: Term<Address> = expand(this.body);
+    const rec: Rec<Address> = expand(arg);
+
+    return close(body, rec);
+  }
+}

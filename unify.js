@@ -34,6 +34,28 @@ export function typecheck(tm: ?Term<Unif>, ty: ?Term<Unif>, relation): Typecheck
   }
 }
 
+type NominalBinding = {
+  type: 'NominalBinding';
+  closing: Map<string, Address>;
+};
+
+type PositionalBinding = {
+  type: 'PositionalBinding';
+  closing: List<Address>;
+};
+
+type AtomicBinding = {
+  type: 'AtomicBinding';
+  closing: Address;
+};
+
+type Binding = NominalBinding | PositionalBinding | AtomicBinding;
+
+// export function close(body: Term<Address>, binding: Binding): Term<Address> {
+// }
+
+// export function open(tm: Term<Address>)
+
 function normalize(addr: Address): Term<Address> {
   let curVal: Term<Address> = expand(addr);
   while (curVal instanceof Application) {
