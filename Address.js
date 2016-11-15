@@ -26,12 +26,16 @@ export function set(val: Term<Address>): Address {
   return hash;
 }
 
-type TermR = Term<TermR>;
+export type TermR = Term<TermR | Address>;
 
+// Helper: stop recursively instantiating if we hit a string (Address)
 function setRecursive_(val: TermR | Address): Address {
-  return typeof val === 'string' ? val : setRecursive(val)[1];
+  return typeof val === 'string'
+    ? val
+    : set(val.map(setRecursive_));
 }
 
+// Expand and set a tree of terms. See Rec-test for examples.
 export function setRecursive(val: TermR): [Term<Address>, Address] {
   const val_ = val.mapSubterms(setRecursive_);
   return [val_, set(val_)];
