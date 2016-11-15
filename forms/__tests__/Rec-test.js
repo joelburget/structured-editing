@@ -1,4 +1,3 @@
-// @flow
 /* eslint-env jest */
 
 import {
@@ -15,6 +14,8 @@ import { addLispAddr, oneAddr, twoAddr, onePlusTwoAddr }
   from '../../examples/Term';
 import Uninterpreted from '../Uninterpreted';
 import expectIs from '../../expectIs';
+
+import type { Address } from '../../Address';
 
 const rec: Address = setAddr(new Rec({ a: oneAddr }));
 const recTy = new RecTy({ a: IntTy.addr });

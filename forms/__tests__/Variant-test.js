@@ -1,4 +1,3 @@
-// @flow
 /* eslint-env jest */
 
 import { set as setAddr, expand, debugExpand } from '../../Address';

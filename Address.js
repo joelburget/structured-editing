@@ -3,7 +3,6 @@ import Sha from 'jssha/src/sha256';
 
 import type { Term } from './types';
 
-// TODO export this default
 export type Address = string;
 
 const store: { [key: string]: any } = {};
