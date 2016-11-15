@@ -8,3 +8,8 @@ before_script:
   - bundle exec danger
 node_js:
   - "6"
+cache:
+  bundler: true
+  directories:
+    - node_modules
+sudo: false
