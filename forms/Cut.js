@@ -1,7 +1,7 @@
 // @flow
 import { List as ExList } from 'extendable-immutable';
 
-import { hashable } from '../decorators';
+import { hashable, mapSubtermsIsMap } from '../decorators';
 import { expand } from '../Address';
 
 import type { Address } from '../Address';
@@ -36,3 +36,4 @@ export default class Cut<A> extends ExList {
 }
 
 hashable(Cut);
+mapSubtermsIsMap(Cut);

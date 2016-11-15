@@ -18,6 +18,7 @@ import {
   dispatchEvents,
   irreducible,
   noMeta,
+  mapSubtermsIsMap,
 } from '../decorators';
 import { typecheck, TypecheckFailure } from '../unify';
 
@@ -135,6 +136,10 @@ export class WorkspaceTy<A> extends ExList {
   handleBackspace(evt: Backspace): ChildUpdate {
     return this.mkUpdate(new Lisp([workspaceNameAddr]), evt);
   }
+
+  acceptChildUpdate(evt) {
+    throw new Error('TODO: WorkspaceTy.acceptChildUpdate');
+  }
 }
 
 WorkspaceTy.unifyChildren = function (
@@ -157,7 +162,7 @@ workspaceNameAddr = registerName('workspace', (term, ty) => {
 hashable(WorkspaceTy);
 // singletonType(WorkspaceTy);
 fixedType(Ty.value)(WorkspaceTy); // Ty : Ty
-noAddressableChildren(WorkspaceTy);
+mapSubtermsIsMap(WorkspaceTy);
 fixedRepresentation(WorkspaceTy);
 dispatchEvents(WorkspaceTy);
 irreducible(WorkspaceTy);
@@ -168,7 +173,7 @@ noMeta(WorkspaceTy);
 export class Workspace<A> extends ExList {
   acceptChildUpdate(evt: ChildUpdate) {
     const { from, to } = evt;
-    const newVal = this.map(child => (child === from ? to : child));
+    const newVal = this.mapSubterms(child => (child === from ? to : child));
     return this.mkUpdate(newVal, evt);
   }
 
@@ -202,7 +207,7 @@ export class Workspace<A> extends ExList {
   pullType(): WorkspaceTy<Unif> {
     console.log(this)
     return new WorkspaceTy(
-      this.map(childAddr => {
+      this.mapSubterms(childAddr => {
         console.log(expand(childAddr))
         console.log(expand(childAddr).pullType())
         return expand(childAddr).pullType()
@@ -212,7 +217,7 @@ export class Workspace<A> extends ExList {
 
   slate(path: SlatePath): SlateVal {
     let i = 0;
-    const rows = this.map((childAddr, childNum) => {
+    const rows = this.mapSubterms((childAddr, childNum) => {
       const child: Term<Address> = expand(childAddr);
       const path_ = path.concat(childNum);
       // $FlowFixMe: I assert this is a valid cast -- more specific to less
@@ -284,6 +289,7 @@ hashable(Workspace);
 dispatchEvents(Workspace);
 irreducible(Workspace);
 noMeta(Workspace);
+mapSubtermsIsMap(Workspace);
 
 // XXX
 // fixedImpl(Workspace.value)(WorkspaceTy);

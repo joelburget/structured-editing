@@ -5,7 +5,7 @@ import { List, Record } from 'immutable';
 import { Block, Inline } from 'slate';
 
 import { Ty } from './bootstrap';
-import { hashable } from '../decorators';
+import { hashable, mapSubtermsIsMap } from '../decorators';
 import { expand } from '../Address';
 import { typecheck } from '../unify';
 import { tableRow, tableCell, mkStructuralKey, mkAddrKey, mkText }
@@ -22,8 +22,8 @@ export class RecRelation {
     tm: Rec<Address>,
     ty: RecTy<Address>
   ): [Rec<Unif>, RecTy<Unif>] {
-    const l_ = tm.map(l => ({ l }));
-    const r_ = ty.map(r => ({ r }));
+    const l_ = tm.mapSubterms(l => ({ l }));
+    const r_ = ty.mapSubterms(r => ({ r }));
     const zipMerged = l_.mergeWith(({ l }, { r }) => ({ l, r }), r_);
 
     let accumTm = tm;
@@ -94,6 +94,7 @@ Rec.unifyChildren = function(
   return recL.mergeWith((l, r) => ({ l, r }), recR);
 };
 
+mapSubtermsIsMap(Rec);
 hashable(Rec);
 
 // eslint-disable-next-line no-unused-vars
@@ -120,6 +121,7 @@ RecTy.unifyChildren = function (l: RecTy<Address>, r: RecTy<Address>): RecTy<Uni
 };
 
 hashable(RecTy);
+mapSubtermsIsMap(RecTy);
 
 // Just accessing a field on a record: looks somthing like:
 // `{ a: 1 }.a`
@@ -154,6 +156,7 @@ export class FieldAccess extends Record({ name: null }) {
 }
 
 hashable(FieldAccess);
+mapSubtermsIsMap(FieldAccess);
 
 // TODO does this even make sense for computations?
 FieldAccess.unifyChildren = function (

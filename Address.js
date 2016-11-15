@@ -20,10 +20,21 @@ export function get(addr: Address): any {
   return store[addr];
 }
 
-export function set(rec: { hash: Address }): Address {
-  const hash = rec.hash;
-  store[hash] = rec;
+export function set(val: Term<Address>): Address {
+  const hash = val.hash;
+  store[hash] = val;
   return hash;
+}
+
+type TermR = Term<TermR>;
+
+function setRecursive_(val: TermR | Address): Address {
+  return typeof val === 'string' ? val : setRecursive(val)[1];
+}
+
+export function setRecursive(val: TermR): [Term<Address>, Address] {
+  const val_ = val.mapSubterms(setRecursive_);
+  return [val_, set(val_)];
 }
 
 export function expand(address: Address): Term<Address> {

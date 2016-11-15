@@ -88,7 +88,7 @@ export function unify(l: ?Address, r: ?Address): UnificationResult {
         l_.constructor.hasOwnProperty('unifyChildren')) {
       const value = l_.constructor
         .unifyChildren(l_, r_)
-        .map(v => typeof v.l === "string" && typeof v.r === "string"
+        .mapSubterms(v => typeof v.l === "string" && typeof v.r === "string"
           // two different addresses -- unify them
           ? unify(v.l, v.r)
           // one answer

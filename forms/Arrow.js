@@ -3,7 +3,7 @@
 import { List, Record } from 'immutable';
 import { Inline } from 'slate';
 
-import { hashable } from '../decorators';
+import { hashable, mapSubtermsIsMap } from '../decorators';
 import { expand } from '../Address';
 import { mkStructuralKey, mkText } from '../slateHelpers';
 
@@ -36,3 +36,4 @@ export default class Arrow<A> extends Record({ domain: null, codomain: null }) {
 }
 
 hashable(Arrow);
+mapSubtermsIsMap(Arrow);

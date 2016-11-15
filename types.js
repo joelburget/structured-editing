@@ -12,8 +12,18 @@ import type {
 import type { SlatePath, SlateVal } from './slateHelpers';
 
 export interface Traversable<A> {
+  // map over all
   map<B>(f: (a: A) => B): Traversable<B>;
 }
+
+// We require subterms to be traversable -- it's not really ever useful to
+// traverse all arbitrary children -- we just want to look at the positions of
+// subterms.
+//
+// TODO It'd be great to be able to traverse, say, holes. Or to count.
+export interface SubtermTraversable<A> {
+  mapSubterms<B>(f: (a: A) => B): SubtermTraversable<B>; 
+};
 
 export type ComputationProperties = {
   modality: 'computation';
@@ -57,7 +67,7 @@ export type Term<A>
   & Form
   // Explicitly calling out the traversability that comes from the Record or
   // List
-  & Traversable<A>
+  & SubtermTraversable<A>
   // every term is either a value or computation
   & (ComputationProperties | ValueProperties)
   // Must subclass either immutable record or list

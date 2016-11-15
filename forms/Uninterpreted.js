@@ -8,6 +8,7 @@ import {
   hashable,
   dispatchEvents,
   noMeta,
+  noAddressableChildren,
 } from '../decorators';
 
 import type {
@@ -50,3 +51,4 @@ export default class Uninterpreted<A> extends Record({ str: null }) {
 hashable(Uninterpreted);
 dispatchEvents(Uninterpreted);
 noMeta(Uninterpreted);
+noAddressableChildren(Uninterpreted);

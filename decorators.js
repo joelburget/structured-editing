@@ -93,6 +93,9 @@ export function trivialUnification(target) {
 export function noAddressableChildren(target) {
   // eslint-disable-next-line no-unused-vars
   target.prototype.acceptChildUpdate = function (args) { return this; };
+  target.prototype.mapSubterms = function(f: (a: A) => B): Term<B> {
+    return this;
+  };
 }
 
 // This thing's representation is fixed -- it accepts no typing. Its children
@@ -150,6 +153,12 @@ export function irreducible(target) {
 
 export function noMeta(target) {
   target.prototype.meta = function (): Array<Meta> { return []; };
+}
+
+export function mapSubtermsIsMap(target) {
+  target.prototype.mapSubterms = function(f: (a: A) => B): Term<B> {
+    return this.map(f);
+  };
 }
 
 // * Both arguments must have the same type -- a singleton
@@ -210,6 +219,13 @@ export function binaryFunction(target, appearance, nameAddr, fun, childrenTy, Li
     // some way to account for that. Attach to ChildUpdate if types are flowing
     // up?
 
-    return this.mkUpdate(this.map(addr => (addr === from ? to : addr)), evt);
+    return this.mkUpdate(
+      this.mapSubterms(addr => (addr === from ? to : addr)),
+      evt
+    );
+  };
+
+  target.prototype.mapSubterms = function(f: (a: A) => B): Term<B> {
+    return this.map(f);
   };
 }

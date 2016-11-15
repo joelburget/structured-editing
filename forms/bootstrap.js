@@ -20,6 +20,7 @@ import {
   noMeta,
   trivialUnification,
   mkUpdate,
+  mapSubtermsIsMap,
 } from '../decorators';
 import ReadOnlySlate from '../components/ReadOnlySlate';
 import Uninterpreted from './Uninterpreted';
@@ -169,6 +170,7 @@ hashable(Annotation);
 fixedRepresentation(Annotation);
 dispatchEvents(Annotation);
 noMeta(Annotation);
+mapSubtermsIsMap(Annotation);
 colonNameAddr = registerName(':', (term, ty) => new Annotation({ term, ty }));
 
 let conflictNameAddr;
@@ -304,6 +306,7 @@ hashable(Conflict);
 fixedRepresentation(Conflict);
 dispatchEvents(Conflict);
 irreducible(Conflict);
+mapSubtermsIsMap(Conflict);
 
 // This represents an *open* lisp expression
 // eslint-disable-next-line no-unused-vars
@@ -311,7 +314,7 @@ export class Lisp<A> extends ExList {
   acceptChildUpdate(evt: ChildUpdate): ChildUpdate {
     const { from, to } = evt;
     const newVal = this.update(
-      arr => arr.map(addr => (addr === from ? to : addr))
+      arr => arr.subterms.map(addr => (addr === from ? to : addr))
     );
     return this.mkUpdate(newVal, evt);
   }
@@ -414,6 +417,7 @@ hashable(Lisp);
 dispatchEvents(Lisp);
 noMeta(Lisp);
 trivialUnification(Lisp);
+mapSubtermsIsMap(Lisp);
 
 // Refs are mutable references into the content-addressed immutable store.
 // They're analogous to refs in Git. They realize the concept of a definition
@@ -495,3 +499,4 @@ fixedRepresentation(Ref);
 // noAddressableChildren(Ref);
 dispatchEvents(Ref);
 noMeta(Ref);
+mapSubtermsIsMap(Ref);

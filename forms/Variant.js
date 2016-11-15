@@ -7,7 +7,7 @@ import { Inline } from 'slate';
 import { Ty } from './bootstrap';
 import { tableRow, tableCell, mkStructuralKey, mkAddrKey, mkText }
   from '../slateHelpers';
-import { hashable } from '../decorators';
+import { hashable, mapSubtermsIsMap } from '../decorators';
 import { expand } from '../Address';
 
 import type { Address } from '../Address';
@@ -62,6 +62,7 @@ NominalVariant.unifyChildren = function (
 }
 
 hashable(NominalVariant);
+mapSubtermsIsMap(NominalVariant);
 
 export class NominalVariantTy<A> extends ExSet {
   proposeTypingRelation() {
@@ -89,6 +90,7 @@ export class NominalVariantTy<A> extends ExSet {
 }
 
 hashable(NominalVariantTy);
+mapSubtermsIsMap(NominalVariantTy);
 
 NominalVariantTy.unifyChildren = function (
   l: NominalVariantTy<Address>,
@@ -124,3 +126,5 @@ export class VariantCase extends ExMap {
 
   proposeTypingRelation() {}
 }
+
+mapSubtermsIsMap(NominalVariantTy);

@@ -10,7 +10,7 @@ import type { Form } from './types';
 import type { SlatePath, SlateVal } from './slateHelpers';
 
 export default function recordLikeRender(tm: Form, path: SlatePath): SlateVal {
-  const rows = tm.map((childAddr, name) => {
+  const rows = tm.subterms.map((childAddr, name) => {
     const child = expand(childAddr);
     const path_ = path.concat(name);
     let i = 0;
